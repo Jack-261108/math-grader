@@ -1,0 +1,8 @@
+opencv-python>=4.8.0
+numpy>=1.24.0
+fastapi>=0.110.0
+uvicorn>=0.28.0
+python-multipart>=0.0.9
+qrcode>=7.4.2
+pillow>=10.0.0
+pydantic>=2.6.0

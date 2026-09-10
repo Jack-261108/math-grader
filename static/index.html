@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+  <title>公考速算技巧 · 智能批改</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      -webkit-tap-highlight-color: transparent;
+      background-color: #f8fafc;
+    }
+    .safe-bottom {
+      padding-bottom: env(safe-area-inset-bottom, 20px);
+    }
+    /* 印章效果 */
+    .stamp-badge {
+      border: 3.5px solid #dc2626;
+      color: #dc2626;
+      border-radius: 12px;
+      transform: rotate(-6deg);
+      box-shadow: 0 0 0 1.5px #dc2626 inset;
+    }
+  </style>
+</head>
+<body class="min-h-screen text-slate-800 flex flex-col justify-between">
+
+  <!-- 顶部导航栏 -->
+  <header class="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-slate-200 px-4 py-3 shadow-xs">
+    <div class="max-w-md mx-auto flex items-center justify-between">
+      <div class="flex items-center space-x-2">
+        <div class="w-8 h-8 rounded-lg bg-emerald-600 flex items-center justify-center text-white shadow-xs">
+          <i class="fa-solid fa-calculator text-base"></i>
+        </div>
+        <div>
+          <h1 class="font-bold text-base text-slate-900 tracking-tight leading-tight">公考速算智能批改</h1>
+          <p class="text-[11px] text-slate-500">拍照秒判 · 透视贴合 · 错题精析</p>
+        </div>
+      </div>
+      <div class="flex items-center">
+        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-100 text-emerald-800">
+          <span class="w-1.5 h-1.5 mr-1 bg-emerald-500 rounded-full animate-pulse"></span>
+          AI 在线
+        </span>
+      </div>
+    </div>
+  </header>
+
+  <!-- 主体交互内容容器 -->
+  <main class="max-w-md w-full mx-auto px-4 py-4 flex-1">
+
+    <!-- 1. 拍照与上传交互卡片 (初始状态) -->
+    <section id="uploadSection" class="space-y-4">
+      <!-- 引导横幅 -->
+      <div class="bg-gradient-to-br from-emerald-600 to-teal-700 rounded-2xl p-5 text-white shadow-md relative overflow-hidden">
+        <div class="relative z-10">
+          <h2 class="text-xl font-bold mb-1">对准练习册，一键拍照批改</h2>
+          <p class="text-emerald-100 text-xs leading-relaxed mb-4">
+            自动校正拍摄倾斜，智能辨识手写笔迹并红绿勾叉标注，自动统计正确率与等级。
+          </p>
+
+          <!-- 用时设置 -->
+          <div class="bg-black/15 rounded-xl p-2.5 flex items-center justify-between text-xs mb-4">
+            <span class="text-emerald-50 flex items-center">
+              <i class="fa-regular fa-clock mr-1.5"></i> 完成用时:
+            </span>
+            <input type="text" id="timeInput" value="23分18秒" class="bg-white/20 text-white font-medium text-center rounded px-2 py-1 w-24 border border-white/30 text-xs focus:outline-none focus:ring-1 focus:ring-white">
+          </div>
+
+          <!-- 双按钮：拍照与相册选择 -->
+          <div class="grid grid-cols-2 gap-2.5">
+            <button id="btnCamera" class="flex items-center justify-center space-x-2 bg-white text-emerald-700 hover:bg-emerald-50 active:scale-98 transition font-bold py-3 px-3 rounded-xl shadow text-sm">
+              <i class="fa-solid fa-camera text-base"></i>
+              <span>拍照批改</span>
+            </button>
+            <button id="btnAlbum" class="flex items-center justify-center space-x-2 bg-emerald-800/40 hover:bg-emerald-800/60 active:scale-98 transition font-medium text-white border border-white/20 py-3 px-3 rounded-xl text-sm">
+              <i class="fa-solid fa-image text-base"></i>
+              <span>相册选取</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 装饰背景 -->
+        <i class="fa-solid fa-square-check absolute -right-4 -bottom-6 text-8xl text-white/10 pointer-events-none"></i>
+      </div>
+
+      <!-- 隐藏的文件选择器：专门用于唤起相机与图库 -->
+      <input type="file" id="inputCamera" accept="image/*" capture="environment" class="hidden">
+      <input type="file" id="inputAlbum" accept="image/*" class="hidden">
+
+      <!-- 拍照小贴士卡片 -->
+      <div class="bg-white rounded-xl p-4 border border-slate-200/80 shadow-2xs">
+        <h3 class="font-bold text-xs text-slate-700 mb-2 flex items-center">
+          <i class="fa-solid fa-circle-info text-emerald-600 mr-1.5"></i> 拍摄建议
+        </h3>
+        <ul class="text-xs text-slate-500 space-y-1.5 pl-1">
+          <li class="flex items-start">
+            <i class="fa-solid fa-check text-emerald-500 mr-1.5 mt-0.5 text-[10px]"></i>
+            尽量让练习题完整表格位于镜头画面居中位置
+          </li>
+          <li class="flex items-start">
+            <i class="fa-solid fa-check text-emerald-500 mr-1.5 mt-0.5 text-[10px]"></i>
+            支持纸面略微倾斜与角度畸变，算法将自动正射矫正
+          </li>
+          <li class="flex items-start">
+            <i class="fa-solid fa-check text-emerald-500 mr-1.5 mt-0.5 text-[10px]"></i>
+            确保光线均匀，避免大面积深色手影遮挡手写数字
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- 2. 上传与批改等待状态 (处理中) -->
+    <section id="loadingSection" class="hidden space-y-4 py-8 text-center">
+      <div class="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-5">
+        <!-- 动态 Spinner -->
+        <div class="relative w-20 h-20 mx-auto">
+          <div class="w-20 h-20 rounded-full border-4 border-emerald-100 border-t-emerald-600 animate-spin"></div>
+          <div class="absolute inset-0 flex items-center justify-center text-emerald-600">
+            <i class="fa-solid fa-wand-magic-sparkles text-2xl animate-pulse"></i>
+          </div>
+        </div>
+
+        <div>
+          <h3 id="loadingTitle" class="font-bold text-slate-800 text-base mb-1">正在批改试卷...</h3>
+          <p id="loadingSubtitle" class="text-xs text-slate-500">大约需要 4~8 秒，正在分析中</p>
+        </div>
+
+        <!-- 步骤状态指示条 -->
+        <div class="bg-slate-50 rounded-xl p-3 text-left space-y-2.5 text-xs text-slate-600">
+          <div id="step1" class="flex items-center space-x-2 text-emerald-600 font-medium">
+            <i class="fa-solid fa-circle-check"></i>
+            <span>照片上传与表格四角点定位</span>
+          </div>
+          <div id="step2" class="flex items-center space-x-2 text-slate-400">
+            <i class="fa-regular fa-circle"></i>
+            <span>透视单应性变换与 20 行网格分割</span>
+          </div>
+          <div id="step3" class="flex items-center space-x-2 text-slate-400">
+            <i class="fa-regular fa-circle"></i>
+            <span>多模态视觉模型提取手写笔迹</span>
+          </div>
+          <div id="step4" class="flex items-center space-x-2 text-slate-400">
+            <i class="fa-regular fa-circle"></i>
+            <span>数学规则判题与高保真图层融合</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. 批改结果展示 (完成状态) -->
+    <section id="resultSection" class="hidden space-y-4">
+      <!-- 成绩卡片 -->
+      <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm relative overflow-hidden">
+        <div class="flex items-start justify-between">
+          <div>
+            <div class="text-[11px] text-slate-400 uppercase tracking-wider font-semibold">速算测评成绩</div>
+            <h2 id="resTitle" class="text-lg font-bold text-slate-900 mt-0.5">速算技巧练习</h2>
+            <p id="resTime" class="text-xs text-slate-500 mt-0.5">用时: 23分18秒</p>
+          </div>
+          <!-- 等级印章 A+ -->
+          <div class="stamp-badge px-3.5 py-1 text-center font-serif font-black">
+            <div class="text-[10px] tracking-widest uppercase">等级</div>
+            <div id="resGrade" class="text-2xl leading-none">A+</div>
+          </div>
+        </div>
+
+        <!-- 统计指标网格 -->
+        <div class="grid grid-cols-3 gap-2 mt-4 pt-3 border-t border-slate-100 text-center">
+          <div class="bg-slate-50 rounded-xl p-2">
+            <div class="text-[11px] text-slate-400">总题数</div>
+            <div id="resTotal" class="text-base font-bold text-slate-800">80</div>
+          </div>
+          <div class="bg-emerald-50 rounded-xl p-2">
+            <div class="text-[11px] text-emerald-600">正确率</div>
+            <div id="resAcc" class="text-base font-bold text-emerald-600">96.2%</div>
+          </div>
+          <div class="bg-rose-50 rounded-xl p-2">
+            <div class="text-[11px] text-rose-600">错题数</div>
+            <div id="resWrong" class="text-base font-bold text-rose-600">3</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 视图模式切换与标注大图预览 -->
+      <div class="bg-white rounded-2xl p-3 border border-slate-200 shadow-sm space-y-3">
+        <!-- 标签页切换 -->
+        <div class="flex items-center bg-slate-100 p-1 rounded-xl text-xs font-medium">
+          <button id="tabScan" class="flex-1 py-1.5 rounded-lg bg-white shadow-xs text-slate-800 transition font-bold">
+            <i class="fa-regular fa-file-lines mr-1"></i> 扫描展平版 (标准)
+          </button>
+          <button id="tabOrig" class="flex-1 py-1.5 rounded-lg text-slate-500 hover:text-slate-800 transition">
+            <i class="fa-solid fa-mobile-screen mr-1"></i> 拍照原图版 (透视)
+          </button>
+        </div>
+
+        <!-- 标注图显示容器 -->
+        <div class="relative rounded-xl overflow-hidden bg-slate-900 border border-slate-200 group">
+          <img id="resultImage" src="" alt="批改标注结果" class="w-full h-auto object-contain cursor-zoom-in active:scale-95 transition" onclick="openFullscreen(this.src)">
+          <div class="absolute bottom-2 right-2 bg-black/60 text-white px-2 py-1 rounded-md text-[10px] backdrop-blur-xs pointer-events-none">
+            <i class="fa-solid fa-magnifying-glass-plus mr-1"></i> 点击查看大图
+          </div>
+        </div>
+
+        <div class="flex justify-between items-center text-xs text-slate-500 px-1">
+          <span>长按图片可直接保存到手机</span>
+          <a id="btnDownload" href="#" download="批改标注图.jpg" class="text-emerald-600 hover:text-emerald-700 font-medium flex items-center">
+            <i class="fa-solid fa-download mr-1"></i> 保存图片
+          </a>
+        </div>
+      </div>
+
+      <!-- 错题明细复盘 -->
+      <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm">
+        <h3 class="font-bold text-sm text-slate-800 mb-3 flex items-center justify-between">
+          <span class="flex items-center">
+            <i class="fa-solid fa-triangle-exclamation text-rose-500 mr-1.5"></i>
+            错题复盘本
+          </span>
+          <span id="wrongCountBadge" class="text-xs font-semibold px-2 py-0.5 rounded-full bg-rose-100 text-rose-700">3 题错误</span>
+        </h3>
+
+        <!-- 错题列表容器 -->
+        <div id="wrongItemsList" class="space-y-2">
+          <!-- 动态渲染错题卡片 -->
+        </div>
+      </div>
+
+      <!-- 底部重拍常驻按钮 -->
+      <div class="pt-2">
+        <button id="btnRetry" class="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-3 px-4 rounded-xl shadow-sm transition flex items-center justify-center space-x-2 text-sm">
+          <i class="fa-solid fa-camera-rotate"></i>
+          <span>批改下一页试卷</span>
+        </button>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- 全屏图片查看 Modal -->
+  <div id="fullscreenModal" class="fixed inset-0 z-50 bg-black/95 hidden flex flex-col justify-between p-4" onclick="closeFullscreen()">
+    <div class="flex justify-between items-center text-white pt-2">
+      <span class="text-xs text-white/70">可双指捏合缩放</span>
+      <button class="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-white" onclick="closeFullscreen()">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+    <div class="flex-1 flex items-center justify-center overflow-auto py-2">
+      <img id="fullscreenImg" src="" class="max-w-full max-h-full object-contain">
+    </div>
+    <div class="text-center text-xs text-white/60 pb-2 safe-bottom">
+      轻触任意处退出预览
+    </div>
+  </div>
+
+  <!-- 底部说明 -->
+  <footer class="text-center text-[11px] text-slate-400 py-3 safe-bottom border-t border-slate-100">
+    公考高照讲数资 · 速算练习智能批改系统
+  </footer>
+
+  <script>
+    const inputCamera = document.getElementById('inputCamera');
+    const inputAlbum = document.getElementById('inputAlbum');
+    const btnCamera = document.getElementById('btnCamera');
+    const btnAlbum = document.getElementById('btnAlbum');
+    const timeInput = document.getElementById('timeInput');
+
+    const uploadSection = document.getElementById('uploadSection');
+    const loadingSection = document.getElementById('loadingSection');
+    const resultSection = document.getElementById('resultSection');
+
+    const tabScan = document.getElementById('tabScan');
+    const tabOrig = document.getElementById('tabOrig');
+    const resultImage = document.getElementById('resultImage');
+    const btnDownload = document.getElementById('btnDownload');
+    const btnRetry = document.getElementById('btnRetry');
+
+    let currentScanUrl = '';
+    let currentOrigUrl = '';
+
+    // 绑定事件：调用拍照与相册
+    btnCamera.addEventListener('click', () => inputCamera.click());
+    btnAlbum.addEventListener('click', () => inputAlbum.click());
+
+    inputCamera.addEventListener('change', (e) => handleFileSelect(e.target.files[0]));
+    inputAlbum.addEventListener('change', (e) => handleFileSelect(e.target.files[0]));
+
+    btnRetry.addEventListener('click', () => {
+      resultSection.classList.add('hidden');
+      uploadSection.classList.remove('hidden');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+
+    // 切换展平版与原图版
+    tabScan.addEventListener('click', () => {
+      tabScan.className = "flex-1 py-1.5 rounded-lg bg-white shadow-xs text-slate-800 transition font-bold";
+      tabOrig.className = "flex-1 py-1.5 rounded-lg text-slate-500 hover:text-slate-800 transition";
+      resultImage.src = currentScanUrl;
+      btnDownload.href = currentScanUrl;
+    });
+
+    tabOrig.addEventListener('click', () => {
+      tabOrig.className = "flex-1 py-1.5 rounded-lg bg-white shadow-xs text-slate-800 transition font-bold";
+      tabScan.className = "flex-1 py-1.5 rounded-lg text-slate-500 hover:text-slate-800 transition";
+      resultImage.src = currentOrigUrl;
+      btnDownload.href = currentOrigUrl;
+    });
+
+    // 处理文件上传与批改流水线
+    async function handleFileSelect(file) {
+      if (!file) return;
+
+      // 切换视图为 Loading
+      uploadSection.classList.add('hidden');
+      resultSection.classList.add('hidden');
+      loadingSection.classList.remove('hidden');
+
+      // 模拟前端多阶段指示动画
+      animateSteps();
+
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('time_str', timeInput.value || '23分18秒');
+
+      try {
+        const resp = await fetch('/api/grade', {
+          method: 'POST',
+          body: formData
+        });
+
+        if (!resp.ok) {
+          const errData = await resp.json();
+          throw new Error(errData.detail || '批改失败');
+        }
+
+        const data = await resp.json();
+        renderResult(data);
+      } catch (err) {
+        alert('批改发生错误: ' + err.message);
+        loadingSection.classList.add('hidden');
+        uploadSection.classList.remove('hidden');
+      }
+    }
+
+    // 模拟多阶段进度状态
+    function animateSteps() {
+      const step1 = document.getElementById('step1');
+      const step2 = document.getElementById('step2');
+      const step3 = document.getElementById('step3');
+      const step4 = document.getElementById('step4');
+
+      step1.className = "flex items-center space-x-2 text-emerald-600 font-medium";
+      step2.className = "flex items-center space-x-2 text-slate-400";
+      step3.className = "flex items-center space-x-2 text-slate-400";
+      step4.className = "flex items-center space-x-2 text-slate-400";
+
+      setTimeout(() => {
+        step2.className = "flex items-center space-x-2 text-emerald-600 font-medium";
+        step2.innerHTML = '<i class="fa-solid fa-circle-check"></i><span>透视单应性变换与 20 行网格分割</span>';
+      }, 1200);
+
+      setTimeout(() => {
+        step3.className = "flex items-center space-x-2 text-emerald-600 font-medium";
+        step3.innerHTML = '<i class="fa-solid fa-circle-check"></i><span>多模态视觉模型提取手写笔迹</span>';
+      }, 2500);
+
+      setTimeout(() => {
+        step4.className = "flex items-center space-x-2 text-emerald-600 font-medium";
+        step4.innerHTML = '<i class="fa-solid fa-circle-check"></i><span>数学规则判题与高保真图层融合</span>';
+      }, 4500);
+    }
+
+    // 渲染批改结果
+    function renderResult(data) {
+      loadingSection.classList.add('hidden');
+      resultSection.classList.remove('hidden');
+
+      const s = data.summary;
+      document.getElementById('resTitle').innerText = data.title || '速算技巧练习';
+      document.getElementById('resTime').innerText = `用时: ${s.time_str || '23分18秒'}`;
+      document.getElementById('resGrade').innerText = s.grade_level || 'A+';
+      document.getElementById('resTotal').innerText = s.total;
+      document.getElementById('resAcc').innerText = `${s.accuracy_pct}%`;
+      document.getElementById('resWrong').innerText = s.wrong;
+
+      currentScanUrl = data.scan_url;
+      currentOrigUrl = data.orig_url;
+
+      // 默认展示扫描展平版
+      resultImage.src = currentScanUrl;
+      btnDownload.href = currentScanUrl;
+
+      // 渲染错题列表
+      const wrongList = document.getElementById('wrongItemsList');
+      wrongList.innerHTML = '';
+
+      if (data.wrong_items && data.wrong_items.length > 0) {
+        document.getElementById('wrongCountBadge').innerText = `${data.wrong_items.length} 题错误`;
+        document.getElementById('wrongCountBadge').className = "text-xs font-semibold px-2 py-0.5 rounded-full bg-rose-100 text-rose-700";
+
+        data.wrong_items.forEach((it, idx) => {
+          const itemDiv = document.createElement('div');
+          itemDiv.className = "p-3 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between text-xs";
+          itemDiv.innerHTML = `
+            <div class="space-y-0.5">
+              <div class="flex items-center space-x-1.5">
+                <span class="px-1.5 py-0.5 rounded bg-rose-600 text-white font-bold text-[10px]">#${idx + 1}</span>
+                <span class="text-slate-500 font-medium">第 ${it.row_num} 行 · 第 ${it.col_idx} 列</span>
+              </div>
+              <div class="text-slate-800 font-bold text-sm pt-0.5">${it.expression}</div>
+            </div>
+            <div class="text-right">
+              <div class="text-slate-400 line-through text-[11px]">作答: ${it.student_raw || '未填写'}</div>
+              <div class="text-rose-600 font-bold text-sm">正解: ${it.expected}</div>
+            </div>
+          `;
+          wrongList.appendChild(itemDiv);
+        });
+      } else {
+        document.getElementById('wrongCountBadge').innerText = "全对满分";
+        document.getElementById('wrongCountBadge').className = "text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700";
+        wrongList.innerHTML = `
+          <div class="py-6 text-center text-slate-500">
+            <i class="fa-solid fa-champagne-glasses text-emerald-500 text-3xl mb-2"></i>
+            <p class="text-xs font-medium">全卷无任何错题，正确率 100%！</p>
+          </div>
+        `;
+      }
+
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // 全屏查看大图
+    function openFullscreen(src) {
+      if (!src) return;
+      document.getElementById('fullscreenImg').src = src;
+      document.getElementById('fullscreenModal').classList.remove('hidden');
+    }
+
+    function closeFullscreen() {
+      document.getElementById('fullscreenModal').classList.add('hidden');
+    }
+  </script>
+</body>
+</html>
