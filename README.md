@@ -4,6 +4,30 @@
 
 ---
 
+## 📸 页面与批改效果预览
+
+### 1. 移动端 H5 界面（手机微信 / 浏览器直达）
+
+| 📷 手机拍照上传主页 | 📊 智能批改结果与错题清单 |
+| :---: | :---: |
+| <img src="docs/screenshots/01_mobile_home.png" width="360" alt="移动端首页"/> | <img src="docs/screenshots/02_mobile_result.png" width="360" alt="批改结果"/> |
+
+### 2. 批改标注与高保真对齐效果
+
+| 📄 扫描展平版标注全图 (Standard Scan) | 📱 手机拍摄原图逆透视贴合 (Perspective Overlay) |
+| :---: | :---: |
+| <img src="docs/screenshots/03_annotated_scan.jpg" width="400" alt="扫描展平版"/> | <img src="docs/screenshots/04_annotated_original.jpg" width="400" alt="手机原图贴合"/> |
+
+### 3. 核心算法细节特写
+
+> 包括**表头与第 1 行精准切分绿勾**、**错题红叉与红色标准答案标注**，以及**右下角 A+ 评级统计印章卡片**：
+
+<p align="center">
+  <img src="docs/screenshots/05_detail_crops.jpg" width="760" alt="核心细节特写"/>
+</p>
+
+---
+
 ## ✨ 核心特性
 
 - 📱 **移动端极简体验**：
