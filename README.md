@@ -8,9 +8,9 @@
 
 ### 1. 移动端 H5 界面（手机微信 / 浏览器直达）
 
-| 📷 手机拍照上传主页 | 📊 智能批改结果与错题清单 |
+| 📷 手机主页与 BYOK 本地设置 | 📊 智能学情诊断与错题归因复盘 |
 | :---: | :---: |
-| <img src="docs/screenshots/01_mobile_home.png" width="360" alt="移动端首页"/> | <img src="docs/screenshots/02_mobile_result.png" width="360" alt="批改结果"/> |
+| <img src="docs/screenshots/01_mobile_settings.png" width="360" alt="BYOK设置面板"/> | <img src="docs/screenshots/02_mobile_result.png" width="360" alt="智能学情诊断与错题归因复盘"/> |
 
 ### 2. 批改标注与高保真对齐效果
 

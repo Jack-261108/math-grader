@@ -37,12 +37,15 @@ app.add_middleware(
 
 output_dir = os.path.join(cur_dir, "output")
 static_dir = os.path.join(cur_dir, "static")
+docs_dir = os.path.join(cur_dir, "docs")
 os.makedirs(output_dir, exist_ok=True)
 os.makedirs(os.path.join(output_dir, "uploads"), exist_ok=True)
 os.makedirs(static_dir, exist_ok=True)
+os.makedirs(docs_dir, exist_ok=True)
 
 app.mount("/output", StaticFiles(directory=output_dir), name="output")
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
+app.mount("/docs", StaticFiles(directory=docs_dir), name="docs")
 
 
 @app.get("/")

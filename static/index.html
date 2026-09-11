@@ -500,6 +500,7 @@
 
     // 渲染批改结果
     function renderResult(data) {
+      uploadSection.classList.add('hidden');
       loadingSection.classList.add('hidden');
       resultSection.classList.remove('hidden');
 
@@ -744,6 +745,89 @@
 
     // 页面载入初始化状态
     updateAiBadge();
+
+    // 支持 ?settings=1 快速预览配置弹窗
+    if (new URLSearchParams(window.location.search).has('settings')) {
+      openSettingsModal();
+    }
+
+    // 支持 ?mock=1 或 ?preview=1 快速预览诊断与复盘界面
+    if (new URLSearchParams(window.location.search).has('mock') || new URLSearchParams(window.location.search).has('preview')) {
+      renderResult({
+        title: "速算技巧练习 2023 (1)",
+        summary: {
+          total: 80,
+          correct: 74,
+          wrong: 6,
+          unknown: 0,
+          accuracy_pct: 92.5,
+          grade_level: "A+",
+          time_str: "18分40秒"
+        },
+        diagnosis: {
+          primary_weakness: "主要失分点为【漏写负号】（共 3 题），占错题的 50%",
+          error_breakdown: [
+            { name: "漏写负号", count: 3 },
+            { name: "退位借位遗漏", count: 1 },
+            { name: "乘法进位相加偏差", count: 1 },
+            { name: "截位试商偏大", count: 1 }
+          ],
+          speed_level: "良好",
+          sec_per_item: 14.0,
+          speed_advice: "平均每题耗时 14.0 秒，符合公考行测标准作答节奏，重点在于减少细小粗心。",
+          actionable_tips: [
+            "【减法负号防漏】：看到小减大算式时，养成下笔前在脑中或卷面上先预置负号的条件反射。",
+            "【进退位防错】：高位直加直减比逐位借位更稳定（如 63-28 转化为 63-20-8=35，避免传统竖式反复借位）。",
+            "【乘法尾数校验法】：做完两位数乘法后，花 0.5 秒心算两数的个位乘积末位，可瞬间拦截错解。",
+            "【截位直除留余】：截位除法重点看余数与除数关系，余数若大于除数及时补商 1，防止估小。"
+          ]
+        },
+        wrong_items: [
+          {
+            row_num: 3,
+            col_idx: 10,
+            expression: "45 - 68",
+            student_raw: "23",
+            expected: -23,
+            error_name: "漏写负号",
+            diagnosis: "未注意小减大，结果应为负数 (-23)，误写为正数 (23)。",
+            advice: "做减法先审题视大小：被减数小于减数时，心算先定负号再做大减小。"
+          },
+          {
+            row_num: 7,
+            col_idx: 10,
+            expression: "63 - 28",
+            student_raw: "45",
+            expected: 35,
+            error_name: "退位借位遗漏",
+            diagnosis: "十位借位后忘记扣减 1，导致结果偏大 10。",
+            advice: "减法退位时可在前位上方微点记号，或使用‘基准数补数法’从高位直减。"
+          },
+          {
+            row_num: 12,
+            col_idx: 6,
+            expression: "83 × 7",
+            student_raw: "571",
+            expected: 581,
+            error_name: "乘法进位相加偏差",
+            diagnosis: "尾数计算正确，但在十位相乘叠加进位时出现偏差 (-10)。",
+            advice: "两位数乘法拆分心算：80×7 + 3×7 = 560 + 21 = 581。"
+          },
+          {
+            row_num: 16,
+            col_idx: 7,
+            expression: "856 ÷ 27 (首位)",
+            student_raw: "4",
+            expected: 3,
+            error_name: "截位试商偏大",
+            diagnosis: "估算试商偏大 1（正解应为 3，误估为 4）。",
+            advice: "除数截位四舍五入若变大，商会相应微偏小；若余数不足除数则商偏大，试商应留有余地。"
+          }
+        ],
+        scan_url: "/docs/screenshots/03_annotated_scan.jpg",
+        orig_url: "/docs/screenshots/04_annotated_original.jpg"
+      });
+    }
   </script>
 </body>
 </html>
