@@ -1218,12 +1218,12 @@
         btnOcrAnswerImage.disabled = true;
 
         try {
-          const cfg = getByokConfig();
+          const cfg = getLocalConfig();
           const fd = new FormData();
           fd.append('file', file);
           if (cfg.model) fd.append('model', cfg.model);
-          if (cfg.baseUrl) fd.append('api_base_url', cfg.baseUrl);
-          if (cfg.apiKey) fd.append('api_key', cfg.apiKey);
+          if (cfg.base_url) fd.append('api_base_url', cfg.base_url);
+          if (cfg.api_key) fd.append('api_key', cfg.api_key);
 
           const resp = await fetch('/api/omr/parse_answer_image', {
             method: 'POST',
@@ -1579,8 +1579,15 @@
       openSettingsModal();
     }
 
-    if (urlParams.has('omr')) {
+    if (urlParams.has('omr') || urlParams.get('mode') === 'omr' || window.location.hash === '#omr') {
       switchMode('omr');
+      if (urlParams.has('preset')) {
+        const p = urlParams.get('preset');
+        if (p) selectPreset(p);
+      }
+      if (urlParams.has('demo')) {
+        if (btnFillDagang120) btnFillDagang120.click();
+      }
     }
 
     if (urlParams.has('mock_omr')) {
