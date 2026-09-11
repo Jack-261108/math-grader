@@ -12,6 +12,29 @@ import cv2
 import numpy as np
 
 
+def _load_dotenv():
+    """轻量自动加载项目根目录下的 .env 文件（纯标准库实现，避免外部第三方依赖）"""
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    env_file = os.path.join(base_dir, ".env")
+    if os.path.exists(env_file):
+        try:
+            with open(env_file, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith("#") or "=" not in line:
+                        continue
+                    k, v = line.split("=", 1)
+                    k = k.strip()
+                    v = v.strip().strip("'\"")
+                    if k and k not in os.environ:
+                        os.environ[k] = v
+        except Exception:
+            pass
+
+
+_load_dotenv()
+
+
 def encode_image_base64(img: np.ndarray, max_side: int = 1800, quality: int = 90) -> str:
     """将 numpy 图像等比缩放并压缩为 JPEG base64 字符串"""
     h, w = img.shape[:2]
@@ -68,28 +91,64 @@ OCR_PROMPT = """这是一张公考速算技巧练习表格（表格通常有表�
 def recognize_sheet_table(
     img: np.ndarray,
     model: Optional[str] = None,
-    timeout: int = 120
+    timeout: int = 120,
+    base_url: Optional[str] = None,
+    api_key: Optional[str] = None
 ) -> Dict[str, Any]:
     """通过多模态视觉模型识别整个表格的所有题目与手写答案。
+
+    参数优先级：
+        1. 显式传入参数 (base_url, api_key) -> 用户浏览器端 localStorage 设置，内存即用即弃；
+        2. 本地 .env 文件或系统环境变量 (ANTHROPIC_BASE_URL, ANTHROPIC_AUTH_TOKEN)；
+        3. 若均未配置，抛出友好错误提示引导用户在前端【设置】中填写。
 
     返回：
         dict 包含：
             - sheet_title: 表格标题
             - items: 识别的所有题目列表
     """
-    base_url = os.environ.get("ANTHROPIC_BASE_URL", "http://16.59.211.85:8317")
-    auth_token = os.environ.get("ANTHROPIC_AUTH_TOKEN", "")
+    _load_dotenv()
 
-    # 候选模型：优先使用快速的 Gemini 3.8 Flash，备选 Claude Sonnet
-    candidate_models = [model] if model else [
-        "claude-fable-5-dd-hgih-hsalf-8.3-inimeg",
-        os.environ.get("ANTHROPIC_DEFAULT_SONNET_MODEL", "claude-sonnet-4-6")
-    ]
+    # 1. 解析 Base URL
+    effective_base_url = (
+        base_url.strip() if (base_url and base_url.strip())
+        else os.environ.get("ANTHROPIC_BASE_URL", "").strip()
+    )
+    if not effective_base_url:
+        effective_base_url = "https://api.anthropic.com"
+
+    # 2. 解析 API Key
+    effective_api_key = (
+        api_key.strip() if (api_key and api_key.strip())
+        else os.environ.get("ANTHROPIC_AUTH_TOKEN", "").strip()
+    )
+    if not effective_api_key:
+        raise ValueError(
+            "未配置 API Key！\n"
+            "• 手机/网页端使用：请点击页面右上角【⚙️ 设置】填入您的 API Key（仅保存在您的手机本地浏览器，不上传服务器）；\n"
+            "• 服务器命令行使用：请在项目根目录配置 .env 文件或设置环境变量 ANTHROPIC_AUTH_TOKEN。"
+        )
+
+    # 3. 解析候选模型
+    if model and model.strip():
+        candidate_models = [model.strip()]
+    else:
+        env_model = os.environ.get("ANTHROPIC_DEFAULT_MODEL", "").strip()
+        if env_model:
+            candidate_models = [env_model]
+        else:
+            candidate_models = [
+                "claude-fable-5-dd-hgih-hsalf-8.3-inimeg",
+                os.environ.get("ANTHROPIC_DEFAULT_SONNET_MODEL", "claude-sonnet-4-6"),
+                "claude-3-5-sonnet-20241022",
+                "gemini-2.5-flash"
+            ]
 
     img_b64 = encode_image_base64(img, max_side=1400)
-    url = f"{base_url.rstrip('/')}/v1/messages"
+    url = f"{effective_base_url.rstrip('/')}/v1/messages"
     headers = {
-        "x-api-key": auth_token,
+        "x-api-key": effective_api_key,
+        "authorization": f"Bearer {effective_api_key}",
         "anthropic-version": "2023-06-01",
         "content-type": "application/json"
     }

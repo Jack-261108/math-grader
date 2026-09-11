@@ -58,9 +58,15 @@ async def index():
 async def api_grade(
     file: UploadFile = File(...),
     time_str: str = Form("23分18秒"),
-    model: Optional[str] = Form(None)
+    model: Optional[str] = Form(None),
+    api_base_url: Optional[str] = Form(None),
+    api_key: Optional[str] = Form(None)
 ):
-    """接收手机拍照图片并执行自动批改"""
+    """接收手机拍照图片并执行自动批改。
+    支持客户端 Bring-Your-Own-Key (BYOK) 模式：
+    传入的 api_base_url 与 api_key 仅在当前请求内存中临时用于调用多模态模型，
+    绝不进行磁盘持久化或写入日志，保证多用户部署下的安全与隔离。
+    """
     try:
         content = await file.read()
         nparr = np.frombuffer(content, np.uint8)
@@ -78,7 +84,9 @@ async def api_grade(
             task_id,
             output_dir=output_dir,
             time_str=time_str,
-            model=model
+            model=model,
+            api_base_url=api_base_url,
+            api_key=api_key
         )
 
         # 整理错题清单
@@ -110,6 +118,11 @@ async def api_grade(
             "report_url": f"/output/{task_id}_report.json",
             "items_count": len(result_data.get("items", []))
         }
+    except ValueError as ve:
+        # 友好的配置或参数校验异常（如未设置 API Key）
+        raise HTTPException(status_code=400, detail=str(ve))
+    except HTTPException:
+        raise
     except Exception as e:
         import traceback
         traceback.print_exc()

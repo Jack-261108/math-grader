@@ -40,11 +40,14 @@
           <p class="text-[11px] text-slate-500">拍照秒判 · 透视贴合 · 错题精析</p>
         </div>
       </div>
-      <div class="flex items-center">
-        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-100 text-emerald-800">
+      <div class="flex items-center space-x-2">
+        <span id="aiStatusBadge" class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-100 text-emerald-800">
           <span class="w-1.5 h-1.5 mr-1 bg-emerald-500 rounded-full animate-pulse"></span>
           AI 在线
         </span>
+        <button id="btnOpenSettings" class="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 active:bg-slate-300 flex items-center justify-center text-slate-600 transition" title="配置 API Key">
+          <i class="fa-solid fa-gear text-sm"></i>
+        </button>
       </div>
     </div>
   </header>
@@ -256,6 +259,71 @@
     </div>
   </div>
 
+  <!-- API Key & Base URL 客户端本地设置模态弹窗 (BYOK) -->
+  <div id="settingsModal" class="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl space-y-4 relative">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div class="flex items-center space-x-2">
+          <div class="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center">
+            <i class="fa-solid fa-sliders text-xs"></i>
+          </div>
+          <h3 class="font-bold text-slate-800 text-sm">AI 接口配置 (BYOK)</h3>
+        </div>
+        <button id="btnCloseSettings" class="w-7 h-7 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100 flex items-center justify-center transition">
+          <i class="fa-solid fa-xmark text-sm"></i>
+        </button>
+      </div>
+
+      <div class="space-y-3 text-xs">
+        <!-- 隐私与安全承诺 -->
+        <div class="bg-emerald-50/80 border border-emerald-200/60 text-emerald-800 rounded-xl p-2.5 flex items-start space-x-2 text-[11px] leading-relaxed">
+          <i class="fa-solid fa-shield-halved text-emerald-600 mt-0.5 shrink-0"></i>
+          <span><b>隐私安全承诺</b>：您填写的 Base URL 和 API Key <b>仅保存在当前手机/浏览器本地 (localStorage)</b>，不上传也不持久化到服务器，批改时仅在内存中临时调用。</span>
+        </div>
+
+        <!-- API Base URL -->
+        <div>
+          <label class="block font-medium text-slate-700 mb-1">API Base URL</label>
+          <input type="text" id="cfgBaseUrl" placeholder="https://api.anthropic.com 或您的转发代理" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition">
+          <p class="text-[10px] text-slate-400 mt-1">支持 Anthropic 原生端点或 OneAPI / 兼容中转服务</p>
+        </div>
+
+        <!-- API Key -->
+        <div>
+          <label class="block font-medium text-slate-700 mb-1">API Key / Token</label>
+          <div class="relative">
+            <input type="password" id="cfgApiKey" placeholder="sk-ant-api03-... 或您的令牌" class="w-full border border-slate-200 rounded-xl pl-3 pr-8 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 font-mono transition">
+            <button type="button" id="btnToggleKeyVis" class="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1">
+              <i class="fa-regular fa-eye text-xs" id="keyVisIcon"></i>
+            </button>
+          </div>
+          <p class="text-[10px] text-slate-400 mt-1">若服务器已预设环境变量，此处可留空使用服务器默认</p>
+        </div>
+
+        <!-- Model (可选) -->
+        <div>
+          <label class="block font-medium text-slate-700 mb-1">视觉识别模型 (可选)</label>
+          <input type="text" id="cfgModel" placeholder="留空默认使用高速模型" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 font-mono transition">
+          <div class="flex flex-wrap gap-1 mt-1.5">
+            <button type="button" class="quick-model-btn px-2 py-0.5 bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 active:bg-emerald-100 rounded-md text-[10px] text-slate-600 transition" data-model="claude-3-5-sonnet-20241022">Sonnet 3.5</button>
+            <button type="button" class="quick-model-btn px-2 py-0.5 bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 active:bg-emerald-100 rounded-md text-[10px] text-slate-600 transition" data-model="gemini-2.5-flash">Gemini Flash</button>
+            <button type="button" class="quick-model-btn px-2 py-0.5 bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 active:bg-emerald-100 rounded-md text-[10px] text-slate-600 transition" data-model="claude-fable-5-dd-hgih-hsalf-8.3-inimeg">Flash 3.8</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 操作按钮组 -->
+      <div class="pt-2 flex items-center space-x-2">
+        <button id="btnResetConfig" class="flex-1 py-2 px-3 border border-slate-200 text-slate-600 hover:bg-slate-50 active:bg-slate-100 rounded-xl text-xs font-medium transition">
+          清空本地
+        </button>
+        <button id="btnSaveConfig" class="flex-1 py-2 px-3 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-xl text-xs font-bold transition shadow-xs">
+          保存配置
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- 底部说明 -->
   <footer class="text-center text-[11px] text-slate-400 py-3 safe-bottom border-t border-slate-100">
     公考高照讲数资 · 速算练习智能批改系统
@@ -325,6 +393,12 @@
       formData.append('file', file);
       formData.append('time_str', timeInput.value || '23分18秒');
 
+      // 注入用户本地配置 (BYOK)
+      const cfg = getLocalConfig();
+      if (cfg.base_url) formData.append('api_base_url', cfg.base_url);
+      if (cfg.api_key) formData.append('api_key', cfg.api_key);
+      if (cfg.model) formData.append('model', cfg.model);
+
       try {
         const resp = await fetch('/api/grade', {
           method: 'POST',
@@ -332,8 +406,13 @@
         });
 
         if (!resp.ok) {
-          const errData = await resp.json();
-          throw new Error(errData.detail || '批改失败');
+          const errData = await resp.json().catch(() => ({}));
+          const errMsg = errData.detail || '批改失败';
+          // 若缺少 API Key，自动引导弹出设置弹窗
+          if (errMsg.includes('API Key') || errMsg.includes('未配置')) {
+            setTimeout(() => openSettingsModal(), 300);
+          }
+          throw new Error(errMsg);
         }
 
         const data = await resp.json();
@@ -443,6 +522,113 @@
     function closeFullscreen() {
       document.getElementById('fullscreenModal').classList.add('hidden');
     }
+
+    // ============================================================
+    // 本地 API 配置管理 (BYOK - Bring Your Own Key)
+    // 所有配置仅保存在客户端 localStorage，绝不上传到服务器持久化
+    // ============================================================
+    const STORAGE_KEY = 'math_grader_api_config';
+    const settingsModal = document.getElementById('settingsModal');
+    const btnOpenSettings = document.getElementById('btnOpenSettings');
+    const btnCloseSettings = document.getElementById('btnCloseSettings');
+    const btnSaveConfig = document.getElementById('btnSaveConfig');
+    const btnResetConfig = document.getElementById('btnResetConfig');
+    const btnToggleKeyVis = document.getElementById('btnToggleKeyVis');
+    const keyVisIcon = document.getElementById('keyVisIcon');
+    const cfgBaseUrl = document.getElementById('cfgBaseUrl');
+    const cfgApiKey = document.getElementById('cfgApiKey');
+    const cfgModel = document.getElementById('cfgModel');
+    const aiStatusBadge = document.getElementById('aiStatusBadge');
+
+    function getLocalConfig() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        return raw ? JSON.parse(raw) : {};
+      } catch (e) {
+        return {};
+      }
+    }
+
+    function saveLocalConfig(cfg) {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(cfg));
+      } catch (e) {}
+    }
+
+    function updateAiBadge() {
+      const cfg = getLocalConfig();
+      if (cfg.api_key && cfg.api_key.trim()) {
+        aiStatusBadge.className = "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-100 text-emerald-800";
+        aiStatusBadge.innerHTML = '<span class="w-1.5 h-1.5 mr-1 bg-emerald-500 rounded-full animate-pulse"></span> 自定义Key已就绪';
+      } else {
+        aiStatusBadge.className = "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-700";
+        aiStatusBadge.innerHTML = '<span class="w-1.5 h-1.5 mr-1 bg-slate-400 rounded-full"></span> 默认配置';
+      }
+    }
+
+    function openSettingsModal() {
+      const cfg = getLocalConfig();
+      cfgBaseUrl.value = cfg.base_url || '';
+      cfgApiKey.value = cfg.api_key || '';
+      cfgModel.value = cfg.model || '';
+      settingsModal.classList.remove('hidden');
+    }
+
+    function closeSettingsModal() {
+      settingsModal.classList.add('hidden');
+    }
+
+    // 绑定设置按钮事件
+    btnOpenSettings.addEventListener('click', openSettingsModal);
+    btnCloseSettings.addEventListener('click', closeSettingsModal);
+    settingsModal.addEventListener('click', (e) => {
+      if (e.target === settingsModal) closeSettingsModal();
+    });
+
+    // 密码明文切换
+    btnToggleKeyVis.addEventListener('click', () => {
+      if (cfgApiKey.type === 'password') {
+        cfgApiKey.type = 'text';
+        keyVisIcon.className = 'fa-regular fa-eye-slash text-xs';
+      } else {
+        cfgApiKey.type = 'password';
+        keyVisIcon.className = 'fa-regular fa-eye text-xs';
+      }
+    });
+
+    // 快捷模型标签点击
+    document.querySelectorAll('.quick-model-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        cfgModel.value = btn.getAttribute('data-model');
+      });
+    });
+
+    // 保存配置
+    btnSaveConfig.addEventListener('click', () => {
+      const cfg = {
+        base_url: cfgBaseUrl.value.trim(),
+        api_key: cfgApiKey.value.trim(),
+        model: cfgModel.value.trim()
+      };
+      saveLocalConfig(cfg);
+      updateAiBadge();
+      closeSettingsModal();
+    });
+
+    // 清空本地配置
+    btnResetConfig.addEventListener('click', () => {
+      if (confirm('确定要清空本地保存的 Base URL 和 API Key 吗？')) {
+        localStorage.removeItem(STORAGE_KEY);
+        cfgBaseUrl.value = '';
+        cfgApiKey.value = '';
+        cfgModel.value = '';
+        updateAiBadge();
+        closeSettingsModal();
+      }
+    });
+
+    // 页面载入初始化状态
+    updateAiBadge();
   </script>
 </body>
 </html>

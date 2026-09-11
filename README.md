@@ -30,7 +30,8 @@
 
 ## ✨ 核心特性
 
-- 📱 **移动端极简体验**：
+- 📱 **移动端极简体验与自带密钥 (BYOK)**：
+  - **Bring Your Own Key (BYOK) 安全架构**：支持在手机端右上角【⚙️ 设置】配置个人 Base URL 与 API Key，数据**仅保存在手机本地浏览器 (`localStorage`)**，绝不在服务端持久化存储或记入日志，用完即弃；适合将服务部署在公网或局域网共享给多人使用，互不干扰；
   - 服务端启动后在终端自动生成局域网访问二维码；
   - 手机微信或自带浏览器扫码直达，直接调起原生后置高清摄像头拍照或相册选取；
   - 移动端支持无缝切换查看“标准展平图”与“拍照原图标注图”，并提供详细错题分析清单。
@@ -86,15 +87,23 @@ math-correct/
 pip install -r requirements.txt
 ```
 
-### 2. 配置环境变量
+### 2. 配置 API Key（两种方式）
 
-视觉识别支持兼容 Anthropic 协议的多模态 API 接口：
+系统支持兼容 Anthropic 协议的多模态视觉 API（如 Claude 3.5 Sonnet、Gemini Flash 等）：
 
-```bash
-# 可选：配置多模态模型 API 端点与密钥（默认从环境变量读取）
-export ANTHROPIC_BASE_URL="https://api.anthropic.com"  # 或您的转发中转地址
-export ANTHROPIC_AUTH_TOKEN="your-api-key"
-```
+- **方式 A：手机/前端自带 Key (BYOK，推荐部署共享)**：
+  - 服务端无需配置任何 Key，直接启动；
+  - 使用者在手机页面右上角点击 **【⚙️ 设置】**，填入个人 API Key 与中转地址；
+  - **安全保障**：所有配置仅保存在客户端本地 `localStorage`，请求批改时随请求在内存中临时使用，绝不写入服务器磁盘或日志。
+
+- **方式 B：服务端全局配置（适合个人独享）**：
+  - 复制项目根目录模板：`cp .env.example .env`
+  - 在 `.env` 中填入你的 `ANTHROPIC_BASE_URL` 与 `ANTHROPIC_AUTH_TOKEN`；
+  - 或直接设置系统环境变量：
+    ```bash
+    export ANTHROPIC_BASE_URL="https://api.anthropic.com"
+    export ANTHROPIC_AUTH_TOKEN="your-api-key"
+    ```
 
 ### 3. 运行移动端服务（推荐）
 

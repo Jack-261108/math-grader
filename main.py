@@ -27,7 +27,9 @@ def process_sheet(
     base_name: str,
     output_dir: str = "./output",
     time_str: str = "23分18秒",
-    model: Optional[str] = None
+    model: Optional[str] = None,
+    api_base_url: Optional[str] = None,
+    api_key: Optional[str] = None
 ) -> dict:
     """处理单张试卷的完整批改流水线并返回结构化数据与图片路径"""
     os.makedirs(output_dir, exist_ok=True)
@@ -42,7 +44,12 @@ def process_sheet(
 
     # 3. 视觉模型识别题目与学生作答
     print(f"[3/5] 正在调用多模态视觉模型提取题目与手写答案...")
-    ocr_res = vision_ocr.recognize_sheet_table(warped_img, model=model)
+    ocr_res = vision_ocr.recognize_sheet_table(
+        warped_img,
+        model=model,
+        base_url=api_base_url,
+        api_key=api_key
+    )
     sheet_title = ocr_res.get("sheet_title", "速算练习")
     items_raw = ocr_res.get("items", [])
     print(f"      识别到卷面标题: 《{sheet_title}》, 题目数量: {len(items_raw)}")
@@ -104,7 +111,9 @@ def grade_image(
     image_path: str,
     output_dir: str = "./output",
     time_str: str = "23分18秒",
-    model: Optional[str] = None
+    model: Optional[str] = None,
+    api_base_url: Optional[str] = None,
+    api_key: Optional[str] = None
 ):
     """端到端批改入口函数"""
     if not os.path.exists(image_path):
@@ -122,7 +131,13 @@ def grade_image(
         return False
 
     result_data = process_sheet(
-        orig_img, base_name, output_dir=output_dir, time_str=time_str, model=model
+        orig_img,
+        base_name,
+        output_dir=output_dir,
+        time_str=time_str,
+        model=model,
+        api_base_url=api_base_url,
+        api_key=api_key
     )
     report = result_data["summary"]
     sheet_title = result_data["title"]
@@ -170,13 +185,17 @@ def main():
     parser.add_argument("--output-dir", default="./output", help="标注图片输出目录 (默认: ./output)")
     parser.add_argument("--time-str", default="23分18秒", help="作答用时描述 (默认: 23分18秒)")
     parser.add_argument("--model", default=None, help="指定多模态视觉模型名称")
+    parser.add_argument("--base-url", default=None, help="自定义多模态大模型 API Base URL")
+    parser.add_argument("--api-key", default=None, help="自定义多模态大模型 API Key")
 
     args = parser.parse_args()
     success = grade_image(
         image_path=args.image_path,
         output_dir=args.output_dir,
         time_str=args.time_str,
-        model=args.model
+        model=args.model,
+        api_base_url=args.base_url,
+        api_key=args.api_key
     )
     sys.exit(0 if success else 1)
 
