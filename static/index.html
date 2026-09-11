@@ -355,22 +355,30 @@
           <!-- 预设模板选择胶囊 -->
           <div class="space-y-1.5">
             <label class="block text-[11px] text-slate-500 font-medium">选择标准考试预设:</label>
-            <div class="grid grid-cols-2 gap-1.5">
-              <button type="button" class="preset-btn px-2.5 py-2 rounded-xl text-xs font-bold border transition text-left bg-blue-50 border-blue-500 text-blue-700 shadow-2xs" data-preset="guokao_135">
-                <div>国考 135 题</div>
-                <div class="text-[10px] font-normal text-blue-500">满分 100分 · 五大模块</div>
+            <div class="grid grid-cols-3 gap-1.5">
+              <button type="button" class="preset-btn px-2 py-2 rounded-xl text-xs font-bold border transition text-left bg-blue-50 border-blue-500 text-blue-700 shadow-2xs" data-preset="guokao_135">
+                <div class="truncate">国考 135 题</div>
+                <div class="text-[10px] font-normal text-blue-500">满分100 · 五大模块</div>
               </button>
-              <button type="button" class="preset-btn px-2.5 py-2 rounded-xl text-xs font-medium border transition text-left bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100" data-preset="shengkao_120">
-                <div>省考 120 题</div>
-                <div class="text-[10px] font-normal text-slate-400">满分 100分 · 多省通用</div>
+              <button type="button" class="preset-btn px-2 py-2 rounded-xl text-xs font-medium border transition text-left bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100" data-preset="dagang_130">
+                <div class="truncate">新大纲 130 题</div>
+                <div class="text-[10px] font-normal text-slate-400">政治理论20题+五模块</div>
               </button>
-              <button type="button" class="preset-btn px-2.5 py-2 rounded-xl text-xs font-medium border transition text-left bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100" data-preset="special_practice_20">
-                <div>专项突击 20 题</div>
-                <div class="text-[10px] font-normal text-slate-400">满分 20分 · 1分/题</div>
+              <button type="button" class="preset-btn px-2 py-2 rounded-xl text-xs font-medium border transition text-left bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100" data-preset="dagang_120">
+                <div class="truncate">新大纲 120 题</div>
+                <div class="text-[10px] font-normal text-slate-400">政治理论15题+五模块</div>
               </button>
-              <button type="button" class="preset-btn px-2.5 py-2 rounded-xl text-xs font-medium border transition text-left bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100" data-preset="special_practice_30">
-                <div>小卷模考 30 题</div>
-                <div class="text-[10px] font-normal text-slate-400">满分 30分 · 1分/题</div>
+              <button type="button" class="preset-btn px-2 py-2 rounded-xl text-xs font-medium border transition text-left bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100" data-preset="shengkao_120">
+                <div class="truncate">省考 120 题</div>
+                <div class="text-[10px] font-normal text-slate-400">满分100 · 多省通用</div>
+              </button>
+              <button type="button" class="preset-btn px-2 py-2 rounded-xl text-xs font-medium border transition text-left bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100" data-preset="special_practice_20">
+                <div class="truncate">专项突击 20 题</div>
+                <div class="text-[10px] font-normal text-slate-400">满分20 · 1分/题</div>
+              </button>
+              <button type="button" class="preset-btn px-2 py-2 rounded-xl text-xs font-medium border transition text-left bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100" data-preset="special_practice_30">
+                <div class="truncate">小卷模考 30 题</div>
+                <div class="text-[10px] font-normal text-slate-400">满分30 · 1分/题</div>
               </button>
             </div>
           </div>
@@ -410,14 +418,28 @@
               已录入 135/135 题 🟢
             </span>
           </div>
+
+          <!-- 快捷导入与拍照识别按钮组 -->
+          <div class="flex flex-wrap gap-1.5 pt-0.5">
+            <input type="file" id="inputAnswerKeyImage" accept="image/*" class="hidden">
+            <button id="btnOcrAnswerImage" type="button" class="text-[11px] font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-2.5 py-1 rounded-lg flex items-center space-x-1 transition">
+              <i class="fa-solid fa-camera"></i>
+              <span>📷 上传答案截图一键识别</span>
+            </button>
+            <button id="btnFillDagang120" type="button" class="text-[11px] font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2.5 py-1 rounded-lg flex items-center space-x-1 transition">
+              <i class="fa-solid fa-file-signature"></i>
+              <span>四海新大纲120题范例</span>
+            </button>
+          </div>
+
           <p class="text-[11px] text-slate-400">
-            支持直接粘贴连续纯字母（如 <code class="text-blue-600">BACDDACBDD...</code>）或带题号格式（如 <code class="text-blue-600">1-5: BACDD 6-10: ACBDD</code>）。
+            支持直接粘贴：四海/粉笔等多列格式（如 <code class="text-blue-600">1--5 CBADC 6--10 DBACA</code>）、单题标号（如 <code class="text-blue-600">1-5: BACDD</code>）或连续字母。
           </p>
-          <textarea id="omrAnswerKeyInput" rows="3" class="w-full border border-slate-200 rounded-xl p-2.5 text-xs font-mono uppercase focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500" placeholder="例如: BACDDACBDDCBABD..."></textarea>
+          <textarea id="omrAnswerKeyInput" rows="3" class="w-full border border-slate-200 rounded-xl p-2.5 text-xs font-mono uppercase focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500" placeholder="可粘贴文字答案，或点击上方按钮上传答案截图自动识别..."></textarea>
           <div class="flex justify-between items-center text-xs">
             <button id="btnFillDemoAnswers" type="button" class="text-[11px] text-blue-600 hover:text-blue-800 font-medium flex items-center space-x-1">
               <i class="fa-solid fa-wand-magic-sparkles"></i>
-              <span>一键填入范例答案</span>
+              <span>一键填入常规范例答案</span>
             </button>
             <button id="btnClearAnswers" type="button" class="text-[11px] text-slate-400 hover:text-slate-600">
               清空答案
@@ -987,6 +1009,32 @@
           { id: "data_analysis", name: "资料分析", start_q: 101, end_q: 120, score_per_q: 1.025 }
         ]
       },
+      dagang_130: {
+        name: "新大纲标准卷 (政治理论20题+五大模块 130题)",
+        total_questions: 130,
+        full_score: 100.0,
+        sections: [
+          { id: "politics", name: "政治理论", start_q: 1, end_q: 20, score_per_q: 0.5 },
+          { id: "common_sense", name: "常识判断", start_q: 21, end_q: 35, score_per_q: 0.6 },
+          { id: "verbal", name: "言语理解与表达", start_q: 36, end_q: 65, score_per_q: 0.9 },
+          { id: "quantity", name: "数量关系", start_q: 66, end_q: 75, score_per_q: 1.0 },
+          { id: "reasoning", name: "判断推理", start_q: 76, end_q: 110, score_per_q: 0.7 },
+          { id: "data_analysis", name: "资料分析", start_q: 111, end_q: 130, score_per_q: 0.975 }
+        ]
+      },
+      dagang_120: {
+        name: "公考新大纲 (政治理论+五大模块 120题)",
+        total_questions: 120,
+        full_score: 100.0,
+        sections: [
+          { id: "politics", name: "政治理论", start_q: 1, end_q: 15, score_per_q: 0.6 },
+          { id: "common_sense", name: "常识判断", start_q: 16, end_q: 25, score_per_q: 0.5 },
+          { id: "verbal", name: "言语理解与表达", start_q: 26, end_q: 55, score_per_q: 0.9 },
+          { id: "quantity", name: "数量关系", start_q: 56, end_q: 70, score_per_q: 0.9 },
+          { id: "reasoning", name: "判断推理", start_q: 71, end_q: 100, score_per_q: 0.8 },
+          { id: "data_analysis", name: "资料分析", start_q: 101, end_q: 120, score_per_q: 1.075 }
+        ]
+      },
       special_practice_20: {
         name: "模块专项突击卡 (20题 / 20分)",
         total_questions: 20,
@@ -1153,6 +1201,67 @@
     }
 
     omrAnswerKeyInput.addEventListener('input', updateAnswerBadge);
+
+    // 答案截图 OCR 一键提取
+    const btnOcrAnswerImage = document.getElementById('btnOcrAnswerImage');
+    const inputAnswerKeyImage = document.getElementById('inputAnswerKeyImage');
+    const btnFillDagang120 = document.getElementById('btnFillDagang120');
+
+    if (btnOcrAnswerImage && inputAnswerKeyImage) {
+      btnOcrAnswerImage.addEventListener('click', () => inputAnswerKeyImage.click());
+      inputAnswerKeyImage.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const originalBtnHtml = btnOcrAnswerImage.innerHTML;
+        btnOcrAnswerImage.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-1"></i> <span>识别中...</span>`;
+        btnOcrAnswerImage.disabled = true;
+
+        try {
+          const cfg = getByokConfig();
+          const fd = new FormData();
+          fd.append('file', file);
+          if (cfg.model) fd.append('model', cfg.model);
+          if (cfg.baseUrl) fd.append('api_base_url', cfg.baseUrl);
+          if (cfg.apiKey) fd.append('api_key', cfg.apiKey);
+
+          const resp = await fetch('/api/omr/parse_answer_image', {
+            method: 'POST',
+            body: fd
+          });
+          const res = await resp.json();
+          if (!resp.ok) {
+            throw new Error(res.detail || '答案图片识别失败');
+          }
+
+          if (res.formatted_text) {
+            omrAnswerKeyInput.value = res.formatted_text;
+            if (res.suggested_preset) {
+              selectPreset(res.suggested_preset);
+            }
+            updateAnswerBadge();
+            alert(`🎉 成功识别提取 ${res.total_detected} 道题标准答案！已自动回填。`);
+          } else {
+            alert('未能从图片中解析出有效题号和答案，请确认图片清晰度。');
+          }
+        } catch (err) {
+          alert('答案截图识别失败: ' + err.message);
+        } finally {
+          btnOcrAnswerImage.innerHTML = originalBtnHtml;
+          btnOcrAnswerImage.disabled = false;
+          inputAnswerKeyImage.value = '';
+        }
+      });
+    }
+
+    // 一键填入四海新大纲 120 题真题范例
+    if (btnFillDagang120) {
+      btnFillDagang120.addEventListener('click', () => {
+        selectPreset('dagang_120');
+        omrAnswerKeyInput.value = `政治理论(1--15)\n1--5 CBADC  6--10 DBACA  11--15 DBADC\n常识判断(16--25)\n16--20 BBADD  21--25 AACCD\n言语理解与表达(26--55)\n26--30 BBACC  31--35 BABDA  36--40 BCDAD\n41--45 BACAD  46--50 ABDCD  51--55 ABACD\n数量关系(56--70)\n56--60 BBCDA  61--65 DBCAA  66--70 CBDAA\n判断推理(71--100)\n71--75 DBCAC  76--80 CBCDA  81--85 ADBDD\n86--90 DCBAB  91--95 ABDCA  96--100 CBADB\n资料分析(101--120)\n101--105 CBADC  106--110 DBACA  111--115 DBADC\n116--120 CABCD`;
+        updateAnswerBadge();
+      });
+    }
 
     // 一键填入范例答案 (根据当前总题数自动生成高质量答案串)
     btnFillDemoAnswers.addEventListener('click', () => {

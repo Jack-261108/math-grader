@@ -105,6 +105,116 @@ DEFAULT_PRESETS: Dict[str, Dict[str, Any]] = {
             }
         ]
     },
+    "dagang_120": {
+        "name": "公考新大纲 (政治理论+五大模块 120题)",
+        "total_questions": 120,
+        "full_score": 100.0,
+        "sections": [
+            {
+                "id": "politics",
+                "name": "政治理论",
+                "start_q": 1,
+                "end_q": 15,
+                "score_per_q": 0.6,
+                "desc": "党史党建、马克思主义理论、最新政策与精神"
+            },
+            {
+                "id": "common_sense",
+                "name": "常识判断",
+                "start_q": 16,
+                "end_q": 25,
+                "score_per_q": 0.5,
+                "desc": "法律、科技、文史国情综合常识"
+            },
+            {
+                "id": "verbal",
+                "name": "言语理解与表达",
+                "start_q": 26,
+                "end_q": 55,
+                "score_per_q": 0.9,
+                "desc": "逻辑填空、中心主旨、语句表达"
+            },
+            {
+                "id": "quantity",
+                "name": "数量关系",
+                "start_q": 56,
+                "end_q": 70,
+                "score_per_q": 0.9,
+                "desc": "数学运算技巧与经典模型应用题"
+            },
+            {
+                "id": "reasoning",
+                "name": "判断推理",
+                "start_q": 71,
+                "end_q": 100,
+                "score_per_q": 0.8,
+                "desc": "图形推理、定义判断、类比推理、逻辑论证"
+            },
+            {
+                "id": "data_analysis",
+                "name": "资料分析",
+                "start_q": 101,
+                "end_q": 120,
+                "score_per_q": 1.075,
+                "desc": "增长率、比重基期两期速算与综合分析"
+            }
+        ]
+    },
+    "dagang_130": {
+        "name": "新大纲标准卷 (政治理论20题+五大模块 130题)",
+        "total_questions": 130,
+        "full_score": 100.0,
+        "sections": [
+            {
+                "id": "politics",
+                "name": "政治理论",
+                "start_q": 1,
+                "end_q": 20,
+                "score_per_q": 0.5,
+                "desc": "党史党建、新思想重大理论与精神"
+            },
+            {
+                "id": "common_sense",
+                "name": "常识判断",
+                "start_q": 21,
+                "end_q": 35,
+                "score_per_q": 0.6,
+                "desc": "法律、文史、科技与省情国情"
+            },
+            {
+                "id": "verbal",
+                "name": "言语理解与表达",
+                "start_q": 36,
+                "end_q": 65,
+                "score_per_q": 0.9,
+                "desc": "选词填空、中心主旨、语句连贯"
+            },
+            {
+                "id": "quantity",
+                "name": "数量关系",
+                "start_q": 66,
+                "end_q": 75,
+                "score_per_q": 1.0,
+                "desc": "工程、行程、几何与数学模型"
+            },
+            {
+                "id": "reasoning",
+                "name": "判断推理",
+                "start_q": 76,
+                "end_q": 110,
+                "score_per_q": 0.7,
+                "desc": "图形推理、定义判断、类比推理、逻辑论证"
+            },
+            {
+                "id": "data_analysis",
+                "name": "资料分析",
+                "start_q": 111,
+                "end_q": 130,
+                "score_per_q": 0.975,
+                "desc": "增长率、现期基期速算与综合分析"
+            }
+        ]
+    },
     "special_practice_20": {
         "name": "模块专项突击卡 (20题 / 20分)",
         "total_questions": 20,
@@ -160,15 +270,31 @@ def parse_answer_key(raw_text: str, total_q: Optional[int] = None) -> Dict[int, 
             result[int(q_str)] = ans.upper()
         return result
 
-    # 形式 B: 题号区间模式 (例如 1-5 BACDD 或 1~5: BACDD)
-    range_matches = re.findall(r'(\d+)\s*[-~至]\s*(\d+)[\s:：]*([A-Da-d\s,]+)', text)
-    if range_matches:
-        for start_s, _, ans_block in range_matches:
-            letters = [c.upper() for c in ans_block if c.upper() in "ABCD"]
+    # 形式 B: 题号区间模式 (例如 1-5 BACDD, 1--5 CBADC, 1 ~ 5: CBADC 等多列排版)
+    range_iter = list(re.finditer(r'(\d+)\s*(?:[-~至—–]{1,2})\s*(\d+)[\s:：]*([A-Da-d]{1,10})', text))
+    if range_iter:
+        max_seen_q = 0
+        for m in range_iter:
+            start_s, _, ans_block = m.group(1), m.group(2), m.group(3)
             start_num = int(start_s)
-            for idx, letter in enumerate(letters):
-                cur_q = start_num + idx
-                result[cur_q] = letter
+            letters = [c.upper() for c in ans_block if c.upper() in "ABCD"]
+
+            # 检测是否为试卷末尾的附加题/加试题，避免覆盖正题开头的 1~5 题
+            prefix_text = text[max(0, m.start() - 30):m.start()]
+            is_extra = any(k in prefix_text for k in ["附加", "加试", "选做", "选考"]) or (max_seen_q > 50 and start_num <= 10)
+
+            if is_extra and max_seen_q > 0:
+                # 顺延至卷尾作为附加题，不覆盖卷首正题
+                for idx, letter in enumerate(letters):
+                    cur_q = max_seen_q + 1 + idx
+                    result[cur_q] = letter
+                max_seen_q += len(letters)
+            else:
+                for idx, letter in enumerate(letters):
+                    cur_q = start_num + idx
+                    result[cur_q] = letter
+                    if cur_q > max_seen_q:
+                        max_seen_q = cur_q
         if result:
             return result
 

@@ -23,9 +23,9 @@ if cur_dir not in sys.path:
     sys.path.insert(0, cur_dir)
 
 import main
-import omr_judge
-import omr_engine
-import omr_renderer
+import omr_judge     # type: ignore
+import omr_engine    # type: ignore
+import omr_renderer  # type: ignore
 import json
 
 app = FastAPI(title="公考速算智能批改系统")
@@ -148,6 +148,42 @@ async def api_omr_presets():
         "status": "success",
         "presets": omr_judge.DEFAULT_PRESETS
     }
+
+
+@app.post("/api/omr/parse_answer_image")
+async def api_parse_answer_image(
+    file: UploadFile = File(...),
+    model: Optional[str] = Form(None),
+    api_base_url: Optional[str] = Form(None),
+    api_key: Optional[str] = Form(None)
+):
+    """接收机构标准答案截图（如四海/粉笔新大纲答案表），通过多模态视觉模型智能提取标准答案并结构化返回。"""
+    try:
+        content = await file.read()
+        nparr = np.frombuffer(content, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if img is None:
+            raise HTTPException(status_code=400, detail="答案图片格式不正确，无法读取")
+
+        extracted = omr_engine.recognize_answer_key_image(
+            img,
+            model=model,
+            base_url=api_base_url,
+            api_key=api_key
+        )
+        return {
+            "status": "success",
+            "formatted_text": extracted.get("formatted_text", ""),
+            "suggested_preset": extracted.get("suggested_preset", "dagang_120"),
+            "total_detected": extracted.get("total_detected", 0),
+            "answers": extracted.get("answers", {})
+        }
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"答案截图识别提取失败: {str(e)}")
 
 
 @app.post("/api/grade/omr")
