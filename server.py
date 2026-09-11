@@ -23,6 +23,10 @@ if cur_dir not in sys.path:
     sys.path.insert(0, cur_dir)
 
 import main
+import omr_judge
+import omr_engine
+import omr_renderer
+import json
 
 app = FastAPI(title="公考速算智能批改系统")
 
@@ -137,6 +141,143 @@ async def api_grade(
         raise HTTPException(status_code=500, detail=f"批改处理失败: {str(e)}")
 
 
+@app.get("/api/omr/presets")
+async def api_omr_presets():
+    """获取所有内置的行测考试预设模板及模块配置"""
+    return {
+        "status": "success",
+        "presets": omr_judge.DEFAULT_PRESETS
+    }
+
+
+@app.post("/api/grade/omr")
+async def api_grade_omr(
+    file: UploadFile = File(...),
+    answer_key: str = Form(...),
+    preset_id: Optional[str] = Form("guokao_135"),
+    sections_json: Optional[str] = Form(None),
+    exam_title: Optional[str] = Form(None),
+    time_str: str = Form("110分00秒"),
+    model: Optional[str] = Form(None),
+    api_base_url: Optional[str] = Form(None),
+    api_key: Optional[str] = Form(None),
+    mock: Optional[int] = Form(0)
+):
+    """接收公考行测选择题填涂卡/答题纸照片并执行自动识别、分模块计分与电子答题卡生成。
+
+    支持多模块配置与每题分值自定义（常识、言语、数量、判断、资料）；
+    标准答案支持连续字母（如 BACDD...）或题号段落（如 1-5: BACDD...）；
+    返回全卷总分、各模块实得分率、做错/漏填分布及高保真电子答题卡报告图。
+    """
+    try:
+        content = await file.read()
+        nparr = np.frombuffer(content, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if img is None:
+            raise HTTPException(status_code=400, detail="答题卡图片格式不正确，无法读取")
+
+        task_id = f"omr_{int(time.time())}_{uuid.uuid4().hex[:6]}"
+        raw_upload_path = os.path.join(output_dir, "uploads", f"{task_id}_raw.jpg")
+        cv2.imwrite(raw_upload_path, img)
+
+        # 1. 解析模块配置
+        sections_config = None
+        if sections_json and sections_json.strip():
+            try:
+                sections_config = json.loads(sections_json)
+            except Exception:
+                pass
+
+        if not sections_config:
+            preset = omr_judge.DEFAULT_PRESETS.get(preset_id or "guokao_135", omr_judge.DEFAULT_PRESETS["guokao_135"])
+            sections_config = preset["sections"]
+            if not exam_title:
+                exam_title = preset["name"]
+
+        if not exam_title:
+            exam_title = "公考《行测》选择题答题卡诊断报告"
+
+        # 计算整卷预期题数
+        total_questions = max((s["end_q"] for s in sections_config), default=135)
+
+        # 2. 解析用户输入的标准答案
+        parsed_std_answers = omr_judge.parse_answer_key(answer_key, total_questions)
+        if not parsed_std_answers:
+            raise HTTPException(status_code=400, detail="未能解析出有效的标准答案，请输入正确答案（例如 BACDDACBDD 或 1-5: BACDD）")
+
+        # 3. 获取学生填涂答案 (真实调用或 mock 模拟)
+        if mock == 1:
+            student_answers = {}
+            for q_i in range(1, total_questions + 1):
+                std = parsed_std_answers.get(q_i, "A")
+                if q_i % 18 == 0:
+                    student_answers[q_i] = None  # 漏涂
+                elif q_i % 23 == 0:
+                    student_answers[q_i] = "multiple"  # 多涂
+                elif q_i % 4 == 0:
+                    # 错选
+                    options = [o for o in ["A", "B", "C", "D"] if o != std]
+                    student_answers[q_i] = options[q_i % len(options)]
+                else:
+                    student_answers[q_i] = std  # 选对
+        else:
+            student_answers = omr_engine.recognize_omr_sheet(
+                img,
+                expected_total_q=total_questions,
+                model=model,
+                base_url=api_base_url,
+                api_key=api_key
+            )
+
+        # 4. 严格行测分模块规则判题与学情诊断
+        judged_data = omr_judge.judge_omr_sheet(
+            student_answers,
+            parsed_std_answers,
+            sections_config=sections_config,
+            custom_time_str=time_str
+        )
+
+        # 5. 渲染专业电子答题卡报告大图
+        card_bgr = omr_renderer.render_omr_report_card(judged_data, exam_title=exam_title)
+        card_path = os.path.join(output_dir, f"{task_id}_card.jpg")
+        cv2.imwrite(card_path, card_bgr)
+
+        # 6. 持久化数据报告
+        report_path = os.path.join(output_dir, f"{task_id}_report.json")
+        result_payload = {
+            "exam_title": exam_title,
+            "summary": judged_data["summary"],
+            "section_results": judged_data["section_results"],
+            "diagnosis": judged_data["diagnosis"],
+            "items": judged_data["items"],
+            "card_url": f"/output/{task_id}_card.jpg",
+            "report_url": f"/output/{task_id}_report.json"
+        }
+        with open(report_path, "w", encoding="utf-8") as f:
+            json.dump(result_payload, f, ensure_ascii=False, indent=2)
+
+        return {
+            "status": "success",
+            "task_id": task_id,
+            "exam_title": exam_title,
+            "summary": judged_data["summary"],
+            "section_results": judged_data["section_results"],
+            "diagnosis": judged_data["diagnosis"],
+            "card_url": f"/output/{task_id}_card.jpg",
+            "report_url": f"/output/{task_id}_report.json",
+            "items": judged_data["items"]
+        }
+
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"答题卡批改失败: {str(e)}")
+
+
 def get_local_ip() -> str:
     """获取本机局域网 IP"""
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -153,7 +294,7 @@ def get_local_ip() -> str:
 def print_server_banner(host: str, port: int):
     """在终端打印友好的局域网访问地址和二维码"""
     local_ip = get_local_ip()
-    local_url = f"http://127.0.0.1:{port}"
+    local_url = f"http://127.0.0.1:{port}" if host in ("0.0.0.0", "127.0.0.1") else f"http://{host}:{port}"
     lan_url = f"http://{local_ip}:{port}"
 
     print("\n" + "=" * 60)
