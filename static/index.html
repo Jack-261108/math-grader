@@ -216,6 +216,52 @@
         </div>
       </div>
 
+      <!-- 智能学情与错因归因诊断面板 -->
+      <div id="diagnosisCard" class="bg-gradient-to-br from-indigo-50/70 via-white to-amber-50/50 rounded-2xl p-4 border border-indigo-100 shadow-sm space-y-3">
+        <div class="flex items-center justify-between border-b border-indigo-100/60 pb-2.5">
+          <div class="flex items-center space-x-2">
+            <div class="w-6 h-6 rounded-lg bg-indigo-600 text-white flex items-center justify-center text-xs shadow-xs">
+              <i class="fa-solid fa-brain"></i>
+            </div>
+            <h3 class="font-bold text-slate-800 text-sm">AI 智能学情与错因归因</h3>
+          </div>
+          <span id="speedBadge" class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">
+            标准节奏
+          </span>
+        </div>
+
+        <!-- 核心薄弱环节与画像 -->
+        <div class="bg-white/90 rounded-xl p-3 border border-indigo-50/80 space-y-2 text-xs">
+          <div class="flex items-start space-x-2">
+            <span class="text-rose-500 font-bold text-xs mt-0.5 shrink-0"><i class="fa-solid fa-crosshairs"></i> 薄弱项:</span>
+            <span id="diagWeakness" class="text-slate-700 font-medium leading-relaxed">正在分析错因...</span>
+          </div>
+          <div class="flex items-start space-x-2 pt-1.5 border-t border-slate-100">
+            <span class="text-amber-500 font-bold text-xs mt-0.5 shrink-0"><i class="fa-solid fa-stopwatch"></i> 速度画像:</span>
+            <span id="diagSpeedAdvice" class="text-slate-600 leading-relaxed">用时分析生成中...</span>
+          </div>
+        </div>
+
+        <!-- 错因分布胶囊 -->
+        <div id="errorDistributionBox" class="space-y-1.5 text-xs">
+          <div class="text-[11px] font-medium text-slate-500">错因分布分类:</div>
+          <div id="errorBadges" class="flex flex-wrap gap-1.5">
+            <!-- 动态生成: 漏写负号 (2), 进位失误 (1) 等 -->
+          </div>
+        </div>
+
+        <!-- 专属提分锦囊 -->
+        <div id="actionableTipsBox" class="bg-amber-50/80 border border-amber-200/60 rounded-xl p-3 text-xs space-y-1.5">
+          <div class="font-bold text-amber-900 text-xs flex items-center space-x-1.5">
+            <i class="fa-solid fa-lightbulb text-amber-600"></i>
+            <span>行测资料分析 · 专属提分技巧</span>
+          </div>
+          <ul id="diagTipsList" class="space-y-1 text-[11px] text-amber-800 list-disc list-inside">
+            <!-- 动态填充锦囊 -->
+          </ul>
+        </div>
+      </div>
+
       <!-- 错题明细复盘 -->
       <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm">
         <h3 class="font-bold text-sm text-slate-800 mb-3 flex items-center justify-between">
@@ -472,6 +518,52 @@
       resultImage.src = currentScanUrl;
       btnDownload.href = currentScanUrl;
 
+      // 渲染智能学情与错因归因面板
+      const diag = data.diagnosis || {};
+      const diagCard = document.getElementById('diagnosisCard');
+      const speedBadge = document.getElementById('speedBadge');
+      const diagWeakness = document.getElementById('diagWeakness');
+      const diagSpeedAdvice = document.getElementById('diagSpeedAdvice');
+      const errorBadges = document.getElementById('errorBadges');
+      const errorDistributionBox = document.getElementById('errorDistributionBox');
+      const diagTipsList = document.getElementById('diagTipsList');
+
+      if (diag && (diag.primary_weakness || diag.actionable_tips)) {
+        diagCard.classList.remove('hidden');
+        diagWeakness.innerText = diag.primary_weakness || '表现优异，无明显计算短板！';
+        diagSpeedAdvice.innerText = diag.speed_advice || '用时稳定。';
+
+        if (diag.sec_per_item && diag.sec_per_item > 0) {
+          speedBadge.innerText = `${diag.speed_level || '标准'} (${diag.sec_per_item}s/题)`;
+        } else {
+          speedBadge.innerText = diag.speed_level || '标准节奏';
+        }
+
+        // 错因分布胶囊
+        errorBadges.innerHTML = '';
+        if (diag.error_breakdown && diag.error_breakdown.length > 0) {
+          errorDistributionBox.classList.remove('hidden');
+          diag.error_breakdown.forEach(err => {
+            const span = document.createElement('span');
+            span.className = "inline-flex items-center px-2 py-0.5 rounded-full bg-rose-50 border border-rose-200 text-rose-700 font-medium text-[11px]";
+            span.innerHTML = `${err.name} <span class="ml-1 px-1 py-0.2 bg-rose-200/80 rounded-full text-[10px] font-bold text-rose-900">${err.count}</span>`;
+            errorBadges.appendChild(span);
+          });
+        } else {
+          errorDistributionBox.classList.add('hidden');
+        }
+
+        // 专属提分锦囊
+        diagTipsList.innerHTML = '';
+        if (diag.actionable_tips && diag.actionable_tips.length > 0) {
+          diag.actionable_tips.forEach(tip => {
+            const li = document.createElement('li');
+            li.innerText = tip;
+            diagTipsList.appendChild(li);
+          });
+        }
+      }
+
       // 渲染错题列表
       const wrongList = document.getElementById('wrongItemsList');
       wrongList.innerHTML = '';
@@ -482,19 +574,42 @@
 
         data.wrong_items.forEach((it, idx) => {
           const itemDiv = document.createElement('div');
-          itemDiv.className = "p-3 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between text-xs";
-          itemDiv.innerHTML = `
-            <div class="space-y-0.5">
-              <div class="flex items-center space-x-1.5">
-                <span class="px-1.5 py-0.5 rounded bg-rose-600 text-white font-bold text-[10px]">#${idx + 1}</span>
-                <span class="text-slate-500 font-medium">第 ${it.row_num} 行 · 第 ${it.col_idx} 列</span>
+          itemDiv.className = "p-3 rounded-xl bg-slate-50 border border-slate-200/90 space-y-2 text-xs shadow-2xs";
+
+          let diagHtml = '';
+          if (it.diagnosis) {
+            diagHtml += `
+              <div class="bg-rose-50/80 rounded-lg p-2 text-[11px] text-rose-800 border border-rose-200/60 flex items-start space-x-1.5">
+                <i class="fa-solid fa-circle-exclamation text-rose-500 mt-0.5 shrink-0"></i>
+                <span class="leading-relaxed"><b>错因诊断</b>: ${it.diagnosis}</span>
               </div>
-              <div class="text-slate-800 font-bold text-sm pt-0.5">${it.expression}</div>
+            `;
+          }
+          if (it.advice) {
+            diagHtml += `
+              <div class="bg-amber-50/80 rounded-lg p-2 text-[11px] text-amber-900 border border-amber-200/60 flex items-start space-x-1.5">
+                <i class="fa-regular fa-lightbulb text-amber-600 mt-0.5 shrink-0"></i>
+                <span class="leading-relaxed"><b>提分建议</b>: ${it.advice}</span>
+              </div>
+            `;
+          }
+
+          itemDiv.innerHTML = `
+            <div class="flex items-center justify-between">
+              <div class="space-y-0.5">
+                <div class="flex items-center space-x-1.5">
+                  <span class="px-1.5 py-0.5 rounded bg-rose-600 text-white font-bold text-[10px]">#${idx + 1}</span>
+                  <span class="text-slate-500 font-medium text-[11px]">第 ${it.row_num} 行 · 第 ${it.col_idx} 列</span>
+                  <span class="px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 font-semibold text-[10px]">${it.error_name || '计算偏差'}</span>
+                </div>
+                <div class="text-slate-800 font-bold text-sm pt-0.5 tracking-wide">${it.expression}</div>
+              </div>
+              <div class="text-right">
+                <div class="text-slate-400 line-through text-[11px]">作答: ${it.student_raw || '未填写'}</div>
+                <div class="text-rose-600 font-bold text-sm">正解: ${it.expected}</div>
+              </div>
             </div>
-            <div class="text-right">
-              <div class="text-slate-400 line-through text-[11px]">作答: ${it.student_raw || '未填写'}</div>
-              <div class="text-rose-600 font-bold text-sm">正解: ${it.expected}</div>
-            </div>
+            ${diagHtml}
           `;
           wrongList.appendChild(itemDiv);
         });

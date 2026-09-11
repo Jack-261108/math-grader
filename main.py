@@ -96,6 +96,7 @@ def process_sheet(
             "grade_level": report["grade_level"],
             "time_str": report["time_str"]
         },
+        "diagnosis": report.get("diagnosis", {}),
         "items": judged_items,
         "scan_path": scan_path,
         "orig_path": orig_path,
@@ -147,9 +148,10 @@ def grade_image(
     json_path = result_data["json_path"]
 
     # 终端打印精美摘要
-    print("\n" + "=" * 50)
+    diag = result_data.get("diagnosis", {})
+    print("\n" + "=" * 54)
     print("                批 改 结 果 摘 要")
-    print("=" * 50)
+    print("=" * 54)
     print(f" 试卷标题 : {sheet_title}")
     print(f" 总 题 数 : {report['total']}")
     print(f" 正 确 数 : {report['correct']} ({report['accuracy_pct']}%)")
@@ -157,24 +159,39 @@ def grade_image(
     print(f" 待 确 认 : {report['unknown']}")
     print(f" 完成用时 : {report['time_str']}")
     print(f" 综合评级 : {report['grade_level']}")
-    print("-" * 50)
+    if diag.get("primary_weakness"):
+        print(f" 学情诊断 : {diag['primary_weakness']}")
+    if diag.get("speed_advice"):
+        print(f" 速度画像 : {diag['speed_advice']}")
+    print("-" * 54)
 
     if report['wrong'] > 0:
-        print(" 错题清单明细:")
+        print(" 错题明细与智能归因分析:")
         for it in judged_items:
             if it.get("is_correct") is False and it.get("status") != "unknown":
                 op_map = {"mul": "×", "add": "+", "sub": "-", "div1": "÷", "div2": "÷"}
                 op_sym = op_map.get(it.get("op_type"), it.get("op_type"))
-                print(f"  • 第 {it.get('row_num', '?')} 行 第 {it.get('col_idx', '?')} 列: "
+                err_label = f"[{it.get('error_name', '计算偏差')}]"
+                print(f"  • 第 {it.get('row_num', '?')} 行 第 {it.get('col_idx', '?')} 列 {err_label}: "
                       f"{it.get('a')} {op_sym} {it.get('b')} = 标准答案 {it.get('expected')}, "
                       f"学生作答: {it.get('student_raw')}")
-        print("-" * 50)
+                if it.get("diagnosis"):
+                    print(f"    ↳ 错因分析: {it.get('diagnosis')}")
+                if it.get("advice"):
+                    print(f"    💡 提分建议: {it.get('advice')}")
+        print("-" * 54)
+
+    if diag.get("actionable_tips"):
+        print(" 🎯 专属提分锦囊:")
+        for tip in diag["actionable_tips"]:
+            print(f"  • {tip}")
+        print("-" * 54)
 
     print(f" 结果保存:")
     print(f"  - 扫描展平标注图 : {scan_path}")
     print(f"  - 原始照片标注图 : {orig_path}")
     print(f"  - 完整数据报告   : {json_path}")
-    print("=" * 50 + "\n")
+    print("=" * 54 + "\n")
 
     return True
 

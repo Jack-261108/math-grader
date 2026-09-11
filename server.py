@@ -89,7 +89,7 @@ async def api_grade(
             api_key=api_key
         )
 
-        # 整理错题清单
+        # 整理错题清单与归因分析
         wrong_items = []
         for it in result_data.get("items", []):
             if it.get("is_correct") is False and it.get("status") != "unknown":
@@ -104,7 +104,11 @@ async def api_grade(
                     "b": it.get("b"),
                     "expected": it.get("expected"),
                     "student_raw": it.get("student_raw"),
-                    "expression": f"{it.get('a')} {op_sym} {it.get('b')}"
+                    "expression": f"{it.get('a')} {op_sym} {it.get('b')}",
+                    "error_type": it.get("error_type", "calculation_error"),
+                    "error_name": it.get("error_name", "计算偏差"),
+                    "diagnosis": it.get("diagnosis", ""),
+                    "advice": it.get("advice", "")
                 })
 
         return {
@@ -112,6 +116,7 @@ async def api_grade(
             "task_id": task_id,
             "title": result_data["title"],
             "summary": result_data["summary"],
+            "diagnosis": result_data.get("diagnosis", {}),
             "wrong_items": wrong_items,
             "scan_url": f"/output/{task_id}_annotated_scan.jpg",
             "orig_url": f"/output/{task_id}_annotated_original.jpg",
