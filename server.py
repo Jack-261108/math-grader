@@ -5,10 +5,12 @@
 import os
 import sys
 import time
+import logging
 from datetime import datetime
 import uuid
 import socket
 from typing import Optional
+from urllib.parse import urlparse
 import cv2
 import numpy as np
 import qrcode
@@ -17,6 +19,17 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
+
+# 初始化标准业务 Logger
+logger = logging.getLogger("math-grader")
+logger.setLevel(logging.INFO)
+if not logger.handlers:
+    _handler = logging.StreamHandler(sys.stdout)
+    _handler.setFormatter(logging.Formatter(
+        fmt="%(asctime)s [%(levelname)s] %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S"
+    ))
+    logger.addHandler(_handler)
 
 # 保证本目录在 sys.path
 cur_dir = os.path.dirname(os.path.abspath(__file__))
@@ -73,6 +86,17 @@ async def index():
     )
 
 
+def mask_target_url(url: Optional[str]) -> str:
+    """脱敏展示 API 端点，保留协议与域名路径，防止敏感凭据泄漏"""
+    if not url:
+        return ""
+    try:
+        p = urlparse(str(url))
+        return f"{p.scheme}://{p.netloc}{p.path}"
+    except Exception:
+        return str(url)[:40]
+
+
 def check_user_byok_config(api_base_url: Optional[str], api_key: Optional[str]):
     """校验用户个人 Base URL 与 API Key (必须由客户端自行配置)"""
     if not api_base_url or not str(api_base_url).strip() or not api_key or not str(api_key).strip():
@@ -92,6 +116,8 @@ async def api_test_config(
     check_user_byok_config(api_base_url, api_key)
     cand_model = model.strip() if (model and model.strip()) else "claude-3-5-sonnet-20241022"
     url = vision_ocr.build_messages_url(api_base_url)
+    masked_url = mask_target_url(url)
+    logger.info(f"[BYOK-Test] 发起模型连通性测试: target={masked_url}, model={cand_model}")
     headers = {
         "x-api-key": api_key.strip(),
         "authorization": f"Bearer {api_key.strip()}",
@@ -111,6 +137,7 @@ async def api_test_config(
         with urllib.request.urlopen(req, timeout=20) as resp:
             resp.read()
             elapsed_ms = int((time.time() - t0) * 1000)
+            logger.info(f"[BYOK-Test] 测试成功: model={cand_model}, 耗时={elapsed_ms}ms")
             return {
                 "status": "success",
                 "message": f"连接成功！模型 [{cand_model}] 响应正常 (耗时 {elapsed_ms}ms)",
@@ -124,7 +151,6 @@ async def api_test_config(
             err_body = he.read().decode('utf-8', errors='ignore')
         except Exception:
             pass
-        print(f"[Test Config HTTPError] URL: {url}, Model: {cand_model}, Code: {he.code}, Reason: {he.reason}, Body: {err_body[:300]}")
         detail_msg = f"HTTP {he.code} ({he.reason})"
         if err_body:
             try:
@@ -139,6 +165,7 @@ async def api_test_config(
                     detail_msg += f": {err_body[:200]}"
             except Exception:
                 detail_msg += f": {err_body[:200]}"
+        logger.warning(f"[BYOK-Test] 测试未通过 (HTTPError): model={cand_model}, code={he.code}, reason={he.reason}, detail={detail_msg}")
         return {
             "status": "error",
             "code": he.code,
@@ -147,7 +174,7 @@ async def api_test_config(
             "detail": detail_msg
         }
     except Exception as e:
-        print(f"[Test Config Error] URL: {url}, Model: {cand_model}, Error: {str(e)}")
+        logger.warning(f"[BYOK-Test] 测试发生异常: model={cand_model}, error={str(e)}")
         return {
             "status": "error",
             "url": url,
@@ -170,14 +197,18 @@ async def api_grade(
     绝不进行磁盘持久化或写入日志，保证多用户部署下的安全与隔离。
     """
     check_user_byok_config(api_base_url, api_key)
+    t_start = time.time()
+    filename = getattr(file, "filename", "upload.jpg")
+    task_id = f"{int(time.time())}_{uuid.uuid4().hex[:6]}"
+    logger.info(f"[Math-Grade] 收到速算批改请求: task_id={task_id}, file={filename}, time_str={time_str}, model={model or 'default'}")
     try:
         content = await file.read()
         nparr = np.frombuffer(content, np.uint8)
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         if img is None:
+            logger.warning(f"[Math-Grade] 图片解码失败: task_id={task_id}, file={filename}")
             raise HTTPException(status_code=400, detail="图片格式不正确，无法读取")
 
-        task_id = f"{int(time.time())}_{uuid.uuid4().hex[:6]}"
         raw_upload_path = os.path.join(output_dir, "uploads", f"{task_id}_raw.jpg")
         cv2.imwrite(raw_upload_path, img)
 
@@ -214,6 +245,13 @@ async def api_grade(
                     "advice": it.get("advice", "")
                 })
 
+        elapsed_ms = int((time.time() - t_start) * 1000)
+        items_count = len(result_data.get("items", []))
+        summary = result_data.get("summary", {})
+        accuracy = summary.get("accuracy", "N/A")
+        grade = summary.get("grade", "N/A")
+        logger.info(f"[Math-Grade] 批改完成: task_id={task_id}, 题数={items_count}, 正确率={accuracy}, 等级={grade}, 错题数={len(wrong_items)}, 耗时={elapsed_ms}ms")
+
         return {
             "status": "success",
             "task_id": task_id,
@@ -224,16 +262,15 @@ async def api_grade(
             "scan_url": f"/output/{task_id}_annotated_scan.jpg",
             "orig_url": f"/output/{task_id}_annotated_original.jpg",
             "report_url": f"/output/{task_id}_report.json",
-            "items_count": len(result_data.get("items", []))
+            "items_count": items_count
         }
     except ValueError as ve:
-        # 友好的配置或参数校验异常（如未设置 API Key）
+        logger.warning(f"[Math-Grade] 参数校验未通过: task_id={task_id}, error={str(ve)}")
         raise HTTPException(status_code=400, detail=str(ve))
     except HTTPException:
         raise
     except Exception as e:
-        import traceback
-        traceback.print_exc()
+        logger.exception(f"[Math-Grade] 批改处理异常: task_id={task_id}, error={str(e)}")
         raise HTTPException(status_code=500, detail=f"批改处理失败: {str(e)}")
 
 
@@ -255,11 +292,15 @@ async def api_parse_answer_image(
 ):
     """接收机构标准答案截图（如四海/粉笔新大纲答案表），通过多模态视觉模型智能提取标准答案并结构化返回。"""
     check_user_byok_config(api_base_url, api_key)
+    t_start = time.time()
+    filename = getattr(file, "filename", "answer_key.jpg")
+    logger.info(f"[OMR-OCR] 收到答案截图 OCR 请求: file={filename}, model={model or 'default'}")
     try:
         content = await file.read()
         nparr = np.frombuffer(content, np.uint8)
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         if img is None:
+            logger.warning(f"[OMR-OCR] 答案图片解码失败: file={filename}")
             raise HTTPException(status_code=400, detail="答案图片格式不正确，无法读取")
 
         extracted = omr_engine.recognize_answer_key_image(
@@ -268,20 +309,24 @@ async def api_parse_answer_image(
             base_url=api_base_url,
             api_key=api_key
         )
+        elapsed_ms = int((time.time() - t_start) * 1000)
+        total_detected = extracted.get("total_detected", 0)
+        suggested_preset = extracted.get("suggested_preset", "dagang_120")
+        logger.info(f"[OMR-OCR] 答案提取成功: 识别题数={total_detected}, 建议预设={suggested_preset}, 耗时={elapsed_ms}ms")
         return {
             "status": "success",
             "formatted_text": extracted.get("formatted_text", ""),
-            "suggested_preset": extracted.get("suggested_preset", "dagang_120"),
-            "total_detected": extracted.get("total_detected", 0),
+            "suggested_preset": suggested_preset,
+            "total_detected": total_detected,
             "answers": extracted.get("answers", {})
         }
     except ValueError as ve:
+        logger.warning(f"[OMR-OCR] 参数校验未通过: error={str(ve)}")
         raise HTTPException(status_code=400, detail=str(ve))
     except HTTPException:
         raise
     except Exception as e:
-        import traceback
-        traceback.print_exc()
+        logger.exception(f"[OMR-OCR] 答案截图识别提取异常: error={str(e)}")
         raise HTTPException(status_code=500, detail=f"答案截图识别提取失败: {str(e)}")
 
 
@@ -295,8 +340,11 @@ async def api_omr_recognize(
 ):
     """仅执行答题卡视觉识别与物理灰度校准，返回识别出的每题作答，方便用户提前核对与纠正"""
     check_user_byok_config(api_base_url, api_key)
+    t_start = time.time()
+    task_id = f"omr_{int(time.time())}_{uuid.uuid4().hex[:6]}"
+    filename = getattr(file, "filename", "card.jpg")
+    logger.info(f"[OMR-Recognize] 收到答题卡填涂预审请求: task_id={task_id}, file={filename}, preset={preset_id}")
     try:
-        task_id = f"omr_{int(time.time())}_{uuid.uuid4().hex[:6]}"
         content = await file.read()
         if not content:
             raise HTTPException(status_code=400, detail="上传图片内容为空")
@@ -304,6 +352,7 @@ async def api_omr_recognize(
         nparr = np.frombuffer(content, np.uint8)
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         if img is None:
+            logger.warning(f"[OMR-Recognize] 图片格式无法解析: task_id={task_id}")
             raise HTTPException(status_code=400, detail="图片格式无法解析，请重新上传")
 
         raw_upload_path = os.path.join(output_dir, "uploads", f"{task_id}_raw.jpg")
@@ -327,6 +376,8 @@ async def api_omr_recognize(
             grid_layout=grid_layout
         )
 
+        elapsed_ms = int((time.time() - t_start) * 1000)
+        logger.info(f"[OMR-Recognize] 填涂预审完成: task_id={task_id}, 识别作答题数={len(student_answers)}/{total_questions}, 耗时={elapsed_ms}ms")
         return {
             "status": "success",
             "raw_task_id": task_id,
@@ -337,8 +388,7 @@ async def api_omr_recognize(
     except HTTPException:
         raise
     except Exception as e:
-        import traceback
-        traceback.print_exc()
+        logger.exception(f"[OMR-Recognize] 答题卡填涂预审异常: task_id={task_id}, error={str(e)}")
         raise HTTPException(status_code=500, detail=f"答题卡填涂识别失败: {str(e)}")
 
 
@@ -365,9 +415,22 @@ async def api_grade_omr(
       3. 基于原图重判纠错 (raw_task_id: 引用原上传答题卡照片，配合已纠正的 student_answers_json 重算重绘)；
       4. 电子答题卡还原与答题卡全景图红笔批注（在实体答题卡照片或高保真仿真卡上绘制绿勾对号、红叉与正解）。
     """
+    t_start = time.time()
+    raw_task_id_str = raw_task_id if isinstance(raw_task_id, str) else None
+    effective_raw_task_id = raw_task_id_str.strip() if (raw_task_id_str and raw_task_id_str.strip()) else None
+    task_id = f"omr_{int(time.time())}_{uuid.uuid4().hex[:6]}"
+
+    # 参数兼容性处理
+    sections_str = sections_json if isinstance(sections_json, str) else None
+    stu_ans_str = student_answers_json if isinstance(student_answers_json, str) else None
+    preset_id_str = preset_id if isinstance(preset_id, str) else "guokao_135"
+    exam_title_str = exam_title if isinstance(exam_title, str) else None
+    time_str_val = time_str if isinstance(time_str, str) else "110分00秒"
+    ans_key_str = answer_key if isinstance(answer_key, str) else str(getattr(answer_key, "default", ""))
+
+    mode = "图片识别" if (file is not None and getattr(file, "filename", None)) else ("在线作答" if (stu_ans_str and stu_ans_str.strip()) else ("Mock模拟" if mock == 1 else "重判纠错"))
+    logger.info(f"[OMR-Grade] 收到答题卡判分请求: task_id={task_id}, mode={mode}, preset={preset_id_str or 'guokao_135'}, raw_task_id={effective_raw_task_id or 'none'}")
     try:
-        effective_raw_task_id = raw_task_id.strip() if (raw_task_id and raw_task_id.strip()) else None
-        task_id = f"omr_{int(time.time())}_{uuid.uuid4().hex[:6]}"
         img = None
         if file is not None and hasattr(file, "read") and getattr(file, "filename", None):
             try:
@@ -387,15 +450,8 @@ async def api_grade_omr(
             if os.path.exists(cached_raw):
                 img = cv2.imread(cached_raw)
 
-        # 参数兼容性处理
-        sections_str = sections_json if isinstance(sections_json, str) else None
-        stu_ans_str = student_answers_json if isinstance(student_answers_json, str) else None
-        preset_id_str = preset_id if isinstance(preset_id, str) else "guokao_135"
-        exam_title_str = exam_title if isinstance(exam_title, str) else None
-        time_str_val = time_str if isinstance(time_str, str) else "110分00秒"
-        ans_key_str = answer_key if isinstance(answer_key, str) else str(getattr(answer_key, "default", ""))
-
         if not stu_ans_str and img is None and mock != 1:
+            logger.warning(f"[OMR-Grade] 缺少答题数据或图片: task_id={task_id}")
             raise HTTPException(status_code=400, detail="请上传答题卡照片或提供在线填涂作答数据")
 
         # 1. 解析模块配置
@@ -421,6 +477,7 @@ async def api_grade_omr(
         # 2. 解析标准答案
         parsed_std_answers = omr_judge.parse_answer_key(ans_key_str, total_questions)
         if not parsed_std_answers:
+            logger.warning(f"[OMR-Grade] 未能解析出标准答案: task_id={task_id}")
             raise HTTPException(status_code=400, detail="未能解析出有效的标准答案，请输入正确答案（例如 BACDDACBDD 或 1-5: BACDD）")
 
         # 3. 获取学生填涂答案 (在线交互作答、照片视觉识别或 mock 模拟)
@@ -436,6 +493,7 @@ async def api_grade_omr(
                     else:
                         student_answers[q_i] = None  # 漏涂/未作答
             except Exception as parse_e:
+                logger.warning(f"[OMR-Grade] 在线作答解析错误: task_id={task_id}, error={parse_e}")
                 raise HTTPException(status_code=400, detail=f"在线作答数据解析错误: {str(parse_e)}")
         elif mock == 1:
             student_answers = {}
@@ -511,6 +569,17 @@ async def api_grade_omr(
         with open(report_path, "w", encoding="utf-8") as f:
             json.dump(result_payload, f, ensure_ascii=False, indent=2)
 
+        elapsed_ms = int((time.time() - t_start) * 1000)
+        smry = judged_data.get("summary", {})
+        earned_score = smry.get("total_earned_score", 0)
+        full_score = smry.get("total_full_score", 100)
+        score_ratio = smry.get("score_ratio_pct", 0)
+        grade_badge = smry.get("grade_badge", "B")
+        tot_correct = smry.get("total_correct", 0)
+        tot_wrong = smry.get("total_wrong", 0)
+        tot_unans = smry.get("total_unanswered", 0)
+        logger.info(f"[OMR-Grade] 判分与批注完成: task_id={task_id}, 试卷={exam_title_str}, 得分={earned_score}/{full_score}分 ({score_ratio}%), 等级={grade_badge}, 对/错/空={tot_correct}/{tot_wrong}/{tot_unans}, 耗时={elapsed_ms}ms")
+
         return {
             "status": "success",
             "task_id": task_id,
@@ -526,12 +595,12 @@ async def api_grade_omr(
         }
 
     except ValueError as ve:
+        logger.warning(f"[OMR-Grade] 参数校验未通过: task_id={task_id}, error={str(ve)}")
         raise HTTPException(status_code=400, detail=str(ve))
     except HTTPException:
         raise
     except Exception as e:
-        import traceback
-        traceback.print_exc()
+        logger.exception(f"[OMR-Grade] 答题卡批改异常: task_id={task_id}, error={str(e)}")
         raise HTTPException(status_code=500, detail=f"答题卡批改失败: {str(e)}")
 
 
@@ -548,6 +617,8 @@ async def api_ai_explain(
     支持客户端 BYOK 本地密钥隔离，调用多模态/大语言模型提供深度点拨。
     """
     check_user_byok_config(api_base_url, api_key)
+    t_start = time.time()
+    logger.info(f"[AI-Tutor] 收到名师秒杀解析请求: type={question_type}, model={model or 'default'}")
     try:
         q_data = json.loads(question_info) if isinstance(question_info, str) else {}
         explanation = ai_tutor.explain_mistake(
@@ -558,17 +629,19 @@ async def api_ai_explain(
             base_url=api_base_url,
             api_key=api_key
         )
+        elapsed_ms = int((time.time() - t_start) * 1000)
+        logger.info(f"[AI-Tutor] 名师解析生成成功: type={question_type}, 耗时={elapsed_ms}ms")
         return {
             "status": "success",
             "explanation": explanation
         }
     except ValueError as ve:
+        logger.warning(f"[AI-Tutor] 参数校验未通过: error={str(ve)}")
         raise HTTPException(status_code=400, detail=str(ve))
     except HTTPException:
         raise
     except Exception as e:
-        import traceback
-        traceback.print_exc()
+        logger.exception(f"[AI-Tutor] 名师解析生成异常: error={str(e)}")
         raise HTTPException(status_code=500, detail=f"名师解析生成失败: {str(e)}")
 
 
@@ -649,12 +722,14 @@ async def api_get_history(
             item.pop("mtime", None)
             results.append(item)
 
+        logger.info(f"[History] 查询判题历史: type={type}, limit={limit}, 返回条数={len(results)}/{len(records)}")
         return {
             "status": "success",
             "total_count": len(records),
             "records": results
         }
     except Exception as e:
+        logger.exception(f"[History] 获取历史记录失败: error={str(e)}")
         raise HTTPException(status_code=500, detail=f"获取历史记录失败: {str(e)}")
 
 
@@ -662,19 +737,23 @@ async def api_get_history(
 async def api_get_history_detail(task_id: str):
     """获取指定判题任务的完整报告数据"""
     if "/" in task_id or "\\" in task_id or ".." in task_id:
+        logger.warning(f"[History] 非法任务ID请求: task_id={task_id}")
         raise HTTPException(status_code=400, detail="非法的任务ID")
 
     report_file = os.path.join(output_dir, f"{task_id}_report.json")
     if not os.path.exists(report_file):
+        logger.warning(f"[History] 报告文件不存在: task_id={task_id}")
         raise HTTPException(status_code=404, detail="未找到该历史判题报告")
     try:
         with open(report_file, "r", encoding="utf-8") as f:
             data = json.load(f)
+        logger.info(f"[History] 获取历史报告详情成功: task_id={task_id}")
         return {
             "status": "success",
             "data": data
         }
     except Exception as e:
+        logger.exception(f"[History] 读取报告失败: task_id={task_id}, error={str(e)}")
         raise HTTPException(status_code=500, detail=f"读取报告失败: {str(e)}")
 
 
@@ -682,6 +761,7 @@ async def api_get_history_detail(task_id: str):
 async def api_delete_history(task_id: str):
     """删除指定的判题历史记录及相关图片"""
     if "/" in task_id or "\\" in task_id or ".." in task_id:
+        logger.warning(f"[History] 非法任务ID删除请求: task_id={task_id}")
         raise HTTPException(status_code=400, detail="非法的任务ID")
 
     files_to_remove = [
@@ -700,6 +780,7 @@ async def api_delete_history(task_id: str):
             except Exception:
                 pass
 
+    logger.info(f"[History] 成功删除历史记录: task_id={task_id}, 清理关联文件数={deleted_count}")
     return {
         "status": "success",
         "message": f"已删除历史记录及关联资源 ({deleted_count} 个文件)"
@@ -731,18 +812,21 @@ def print_server_banner(host: str, port: int):
     print("=" * 60)
     print(f" • 本地访问地址   : {local_url}")
     print(f" • 手机端访问地址 : {lan_url} (需连接同一局域网/WiFi)")
-    print("-" * 60)
-    print(" 📱 用手机微信/浏览器直接扫描下方二维码打开相机拍照批改:")
-    print("-" * 60)
+    print("=" * 60)
 
-    try:
-        qr = qrcode.QRCode(box_size=1, border=1)
-        qr.add_data(lan_url)
-        qr.print_ascii(invert=True)
-    except Exception:
-        pass
-
-    print("=" * 60 + "\n")
+    # 仅在交互式控制台输出 ASCII 二维码，避免重定向到日志文件时产生大面积乱码
+    if sys.stdout.isatty():
+        print(" 📱 用手机微信/浏览器直接扫描下方二维码打开相机拍照批改:")
+        print("-" * 60)
+        try:
+            qr = qrcode.QRCode(box_size=1, border=1)
+            qr.add_data(lan_url)
+            qr.print_ascii(invert=True)
+        except Exception:
+            pass
+        print("-" * 60 + "\n")
+    else:
+        print("\n")
 
 
 UVICORN_LOG_CONFIG = {
@@ -778,6 +862,7 @@ UVICORN_LOG_CONFIG = {
         "uvicorn": {"handlers": ["default"], "level": "INFO"},
         "uvicorn.error": {"level": "INFO"},
         "uvicorn.access": {"handlers": ["access"], "level": "INFO", "propagate": False},
+        "math-grader": {"handlers": ["access"], "level": "INFO", "propagate": False},
     },
 }
 
