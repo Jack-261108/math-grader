@@ -1,0 +1,37 @@
+name: Deploy to Server1
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy math-grader to Server1
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Deploy to Server1 via SSH
+        env:
+          SSH_HOST: ${{ secrets.SERVER1_HOST }}
+          SSH_PORT: ${{ secrets.SERVER1_PORT }}
+          SSH_USER: ${{ secrets.SERVER1_USER }}
+          SSH_KEY: ${{ secrets.SERVER1_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+
+          ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "bash -c '
+            set -euo pipefail
+            cd /root/math-grader
+            git fetch origin main
+            git reset --hard origin/main
+            chmod +x deploy.sh
+            ./deploy.sh
+          '"
