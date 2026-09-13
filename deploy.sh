@@ -12,6 +12,12 @@ echo '📥 拉取最新代码...'
 git fetch origin main
 git reset --hard origin/main
 
+echo '🔤 检查系统中文字体环境...'
+if ! fc-list :lang=zh 2>/dev/null | grep -q .; then
+    echo '📦 安装中文字体支持包 (fonts-wqy-microhei)...'
+    apt-get update -qq && apt-get install -y -qq fonts-wqy-microhei fonts-wqy-zenhei || true
+fi
+
 echo '🐍 检查 Python 虚拟环境与依赖...'
 export PATH="/root/.pyenv/bin:$PATH"
 if [ -d "/root/.pyenv/versions/math-grader" ]; then

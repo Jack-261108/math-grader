@@ -28,8 +28,11 @@
       -webkit-tap-highlight-color: transparent;
       background-color: #f8fafc;
     }
+    .safe-top {
+      padding-top: max(env(safe-area-inset-top, 12px), 12px);
+    }
     .safe-bottom {
-      padding-bottom: env(safe-area-inset-bottom, 20px);
+      padding-bottom: max(env(safe-area-inset-bottom, 20px), 16px);
     }
     /* 印章效果 */
     .stamp-badge {
@@ -688,8 +691,8 @@
             </div>
           </div>
           <div>
-            <h3 class="font-bold text-slate-800 text-base mb-1">正在智能批改行测答题卡...</h3>
-            <p class="text-xs text-slate-500">正在识别填涂卡点位并分模块核算分值</p>
+            <h3 id="omrLoadingTitle" class="font-bold text-slate-800 text-base mb-1">正在智能批改行测答题卡...</h3>
+            <p id="omrLoadingSubtitle" class="text-xs text-slate-500">正在识别填涂卡点位并分模块核算分值</p>
           </div>
           <div class="bg-slate-50 rounded-xl p-3 text-left space-y-2 text-xs text-slate-600">
             <div class="flex items-center space-x-2 text-blue-600 font-medium">
@@ -936,19 +939,50 @@
 
   </main>
 
-  <!-- 全屏图片查看 Modal (顶层 z-[100]，盖过所有子模态框) -->
-  <div id="fullscreenModal" class="fixed inset-0 z-[100] bg-black/95 hidden flex flex-col justify-between p-4" onclick="closeFullscreen()">
-    <div class="flex justify-between items-center text-white pt-2">
-      <span class="text-xs text-white/70">可双指捏合缩放</span>
-      <button class="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-white" onclick="closeFullscreen()">
-        <i class="fa-solid fa-xmark"></i>
-      </button>
+  <!-- 全屏高清图片交互查看 Modal (顶层 z-[100]，盖过所有子模态框，支持拖拽平移、双击放大、双指捏合缩放与旋转) -->
+  <div id="fullscreenModal" class="fixed inset-0 z-[100] bg-black/95 backdrop-blur-md hidden flex flex-col justify-between select-none touch-none">
+    <!-- 顶部操作栏 (带安全区 safe-top) -->
+    <div class="flex items-center justify-between text-white px-4 pt-3 pb-2.5 bg-gradient-to-b from-black/80 to-transparent z-10 safe-top">
+      <div class="flex items-center space-x-2">
+        <span id="fullscreenZoomLevel" class="text-xs font-mono font-bold px-2.5 py-0.5 rounded-full bg-white/20 text-white/95 backdrop-blur-sm">100%</span>
+        <span class="text-[11px] text-white/70 hidden sm:inline">双击缩放 · 拖拽平移 · 双指捏合</span>
+      </div>
+      <div class="flex items-center space-x-2">
+        <a id="btnFullscreenDownload" href="#" download="批注原卷大图.jpg" class="w-8 h-8 rounded-full bg-white/15 hover:bg-white/25 active:bg-white/35 flex items-center justify-center text-white transition text-xs shadow-xs" title="保存/下载原图">
+          <i class="fa-solid fa-download"></i>
+        </a>
+        <button id="btnCloseFullscreen" type="button" class="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 active:bg-white/40 flex items-center justify-center text-white transition text-sm shadow-xs" onclick="closeFullscreen()" title="关闭预览 (Esc)">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
     </div>
-    <div class="flex-1 flex items-center justify-center overflow-auto py-2">
-      <img id="fullscreenImg" src="" class="max-w-full max-h-full object-contain">
+
+    <!-- 中间交互手势与视口区 -->
+    <div id="fullscreenImgViewport" class="flex-1 w-full h-full relative overflow-hidden flex items-center justify-center cursor-grab active:cursor-grabbing touch-none select-none">
+      <img id="fullscreenImg" src="" alt="查看原图" class="max-w-full max-h-full object-contain pointer-events-auto transition-transform duration-75 ease-out select-none will-change-transform" style="transform: translate(0px, 0px) scale(1) rotate(0deg); transform-origin: center center;">
     </div>
-    <div class="text-center text-xs text-white/60 pb-2 safe-bottom">
-      轻触任意处退出预览
+
+    <!-- 底部浮动缩放与微调工具栏 (带安全区 safe-bottom) -->
+    <div class="px-4 pb-4 pt-2 bg-gradient-to-t from-black/80 to-transparent z-10 flex flex-col items-center safe-bottom">
+      <div class="flex items-center space-x-1 sm:space-x-2 bg-white/15 backdrop-blur-md px-3 py-1.5 rounded-2xl border border-white/10 shadow-lg text-white text-xs">
+        <button id="btnZoomOut" type="button" class="w-8 h-8 rounded-xl hover:bg-white/20 active:bg-white/30 flex items-center justify-center transition" title="缩小">
+          <i class="fa-solid fa-minus text-xs"></i>
+        </button>
+        <button id="btnZoomReset" type="button" class="px-2.5 h-8 rounded-xl hover:bg-white/20 active:bg-white/30 flex items-center justify-center font-medium text-[11px] transition" title="适应屏幕">
+          <span>适应</span>
+        </button>
+        <button id="btnZoom100" type="button" class="px-2.5 h-8 rounded-xl hover:bg-white/20 active:bg-white/30 flex items-center justify-center font-medium text-[11px] transition" title="1:1 原尺寸">
+          <span>1:1</span>
+        </button>
+        <button id="btnZoomIn" type="button" class="w-8 h-8 rounded-xl hover:bg-white/20 active:bg-white/30 flex items-center justify-center transition" title="放大">
+          <i class="fa-solid fa-plus text-xs"></i>
+        </button>
+        <div class="w-px h-4 bg-white/20 mx-1"></div>
+        <button id="btnRotateRight" type="button" class="w-8 h-8 rounded-xl hover:bg-white/20 active:bg-white/30 flex items-center justify-center transition" title="顺时针旋转90°">
+          <i class="fa-solid fa-rotate-right text-xs"></i>
+        </button>
+      </div>
+      <p class="text-[10px] text-white/60 mt-1.5 text-center">双击快速缩放 · 单指拖拽平移 · 双指捏合缩放 · 边缘轻触退出</p>
     </div>
   </div>
 
@@ -1368,6 +1402,76 @@
     modeTabMath.addEventListener('click', () => switchMode('math'));
     modeTabOmr.addEventListener('click', () => switchMode('omr'));
 
+    // 客户端图片智能压缩与降维加速（针对手机拍照 15MB~30MB 超大原图，保持高质量同时压缩至数百KB，彻底解决移动网络 Failed to fetch 与超时中断）
+    async function compressImage(file, maxSide = 2000, quality = 0.85) {
+      if (!file || !file.type || !file.type.startsWith('image/')) {
+        return file;
+      }
+      // 如果文件本身已经小于 600KB，无需重复压缩
+      if (file.size < 600 * 1024) {
+        return file;
+      }
+      try {
+        return await new Promise((resolve) => {
+          const img = new Image();
+          const url = URL.createObjectURL(file);
+          img.onload = () => {
+            URL.revokeObjectURL(url);
+            let w = img.naturalWidth || img.width;
+            let h = img.naturalHeight || img.height;
+            if (w <= 0 || h <= 0) {
+              resolve(file);
+              return;
+            }
+            if (w > maxSide || h > maxSide) {
+              if (w > h) {
+                h = Math.round((h * maxSide) / w);
+                w = maxSide;
+              } else {
+                w = Math.round((w * maxSide) / h);
+                h = maxSide;
+              }
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+              resolve(file);
+              return;
+            }
+            // 纯白背景底色，避免透明底 PNG 转换产生黑边
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(0, 0, w, h);
+            ctx.drawImage(img, 0, 0, w, h);
+            canvas.toBlob(
+              (blob) => {
+                if (blob && blob.size < file.size) {
+                  const compressedFile = new File([blob], (file.name || 'sheet.jpg').replace(/\.[^.]+$/, '.jpg'), {
+                    type: 'image/jpeg',
+                    lastModified: Date.now()
+                  });
+                  resolve(compressedFile);
+                } else {
+                  resolve(file);
+                }
+              },
+              'image/jpeg',
+              quality
+            );
+          };
+          img.onerror = () => {
+            URL.revokeObjectURL(url);
+            resolve(file);
+          };
+          img.src = url;
+        });
+      } catch (e) {
+        console.warn('Image compression fallback:', e);
+        return file;
+      }
+    }
+
     // ============================================================
     // 2. 速算练习册逻辑 (原有模块)
     // ============================================================
@@ -1424,8 +1528,10 @@
 
       animateSteps();
 
+      const uploadFile = await compressImage(file, 2000, 0.85);
+
       const formData = new FormData();
-      formData.append('file', file);
+      formData.append('file', uploadFile);
       formData.append('time_str', timeInput.value || '23分18秒');
 
       const cfg = getLocalConfig();
@@ -1451,7 +1557,11 @@
         const data = await resp.json();
         renderResult(data);
       } catch (err) {
-        alert('批改发生错误: ' + err.message);
+        let msg = err.message || '批改失败';
+        if (msg === 'Failed to fetch' || msg.includes('fetch')) {
+          msg = '网络连接超时或中断 (Failed to fetch)，请检查网络连接后重试！';
+        }
+        alert('批改发生错误: ' + msg);
         loadingSection.classList.add('hidden');
         uploadSection.classList.remove('hidden');
       }
@@ -1899,9 +2009,10 @@
         btnOcrAnswerImage.disabled = true;
 
         try {
+          const uploadFile = await compressImage(file, 2000, 0.85);
           const cfg = getLocalConfig();
           const fd = new FormData();
-          fd.append('file', file);
+          fd.append('file', uploadFile);
           if (cfg.model) fd.append('model', cfg.model);
           if (cfg.base_url) fd.append('api_base_url', cfg.base_url);
           if (cfg.api_key) fd.append('api_key', cfg.api_key);
@@ -1926,7 +2037,11 @@
             alert('未能从图片中解析出有效题号和答案，请确认图片清晰度。');
           }
         } catch (err) {
-          alert('答案截图识别失败: ' + err.message);
+          let msg = err.message || '答案图片识别失败';
+          if (msg === 'Failed to fetch' || msg.includes('fetch')) {
+            msg = '网络连接超时或中断 (Failed to fetch)，请检查网络后重试！';
+          }
+          alert('答案截图识别失败: ' + msg);
         } finally {
           btnOcrAnswerImage.innerHTML = originalBtnHtml;
           btnOcrAnswerImage.disabled = false;
@@ -1989,8 +2104,18 @@
       omrResultSection.classList.add('hidden');
       omrLoadingSection.classList.remove('hidden');
 
+      const titleEl = document.getElementById('omrLoadingTitle');
+      const subEl = document.getElementById('omrLoadingSubtitle');
+      if (titleEl) titleEl.innerText = '正在智能优化答题卡并极速上传...';
+      if (subEl) subEl.innerText = '正在压缩图片并建立高保真识别信道';
+
+      const uploadFile = await compressImage(file, 2000, 0.85);
+
+      if (titleEl) titleEl.innerText = '正在智能识别与批改行测答题卡...';
+      if (subEl) subEl.innerText = '正在视觉提取填涂点位并分模块核算分值';
+
       const formData = new FormData();
-      formData.append('file', file);
+      formData.append('file', uploadFile);
       formData.append('answer_key', ansKey);
       formData.append('preset_id', currentOmrPreset);
       formData.append('sections_json', JSON.stringify(currentSections));
@@ -2022,9 +2147,16 @@
         const data = await resp.json();
         renderOmrResult(data);
       } catch (err) {
-        alert('答题卡批改发生错误: ' + err.message);
+        let msg = err.message || '答题卡批改失败';
+        if (msg === 'Failed to fetch' || msg.includes('fetch')) {
+          msg = '网络连接超时或中断 (Failed to fetch)，请检查手机网络或代理连接后重试！';
+        }
+        alert('答题卡批改发生错误: ' + msg);
         omrLoadingSection.classList.add('hidden');
         omrUploadSection.classList.remove('hidden');
+      } finally {
+        if (titleEl) titleEl.innerText = '正在智能批改行测答题卡...';
+        if (subEl) subEl.innerText = '正在识别填涂卡点位并分模块核算分值';
       }
     }
 
@@ -2514,7 +2646,11 @@
         const data = await resp.json();
         renderOmrResult(data);
       } catch (err) {
-        alert('答题卡批改发生错误: ' + err.message);
+        let msg = err.message || '答题卡批改失败';
+        if (msg === 'Failed to fetch' || msg.includes('fetch')) {
+          msg = '网络连接超时或中断 (Failed to fetch)，请检查网络连接后重试！';
+        }
+        alert('答题卡批改发生错误: ' + msg);
         omrLoadingSection.classList.add('hidden');
         omrUploadSection.classList.remove('hidden');
       }
@@ -2651,8 +2787,18 @@
       omrResultSection.classList.add('hidden');
       omrLoadingSection.classList.remove('hidden');
 
+      const titleEl = document.getElementById('omrLoadingTitle');
+      const subEl = document.getElementById('omrLoadingSubtitle');
+      if (titleEl) titleEl.innerText = '正在智能优化答题卡并极速上传...';
+      if (subEl) subEl.innerText = '正在压缩图片并建立高保真识别信道';
+
+      const uploadFile = await compressImage(file, 2000, 0.85);
+
+      if (titleEl) titleEl.innerText = '正在识别答题卡填涂选项...';
+      if (subEl) subEl.innerText = '正在多模态视觉提取填涂 ABCD 标记';
+
       const formData = new FormData();
-      formData.append('file', file);
+      formData.append('file', uploadFile);
       formData.append('preset_id', currentOmrPreset);
       formData.append('sections_json', JSON.stringify(currentSections));
 
@@ -2691,11 +2837,17 @@
 
         alert(`🎉 成功识别 ${data.total_detected || Object.keys(onlineAnswers).length} 道题目的考生填涂！\n已为您自动填入下方【极速涂卡纸】。\n请仔细核对有无漏涂或浅涂看偏，修正后点击底部的【提交在线答题卡】即可出分！`);
       } catch (err) {
-        alert('答题卡识别失败: ' + err.message);
+        let msg = err.message || '答题卡识别失败';
+        if (msg === 'Failed to fetch' || msg.includes('fetch')) {
+          msg = '网络连接超时或中断 (Failed to fetch)，请检查手机网络或代理连接后重试！';
+        }
+        alert('答题卡识别失败: ' + msg);
         omrLoadingSection.classList.add('hidden');
         omrUploadSection.classList.remove('hidden');
       } finally {
         inputOmrRecognizeOnly.value = '';
+        if (titleEl) titleEl.innerText = '正在智能批改行测答题卡...';
+        if (subEl) subEl.innerText = '正在识别填涂卡点位并分模块核算分值';
       }
     }
 
@@ -3944,16 +4096,280 @@
       });
     }
 
-    // 全屏查看大图
-    function openFullscreen(src) {
-      if (!src) return;
-      document.getElementById('fullscreenImg').src = src;
-      document.getElementById('fullscreenModal').classList.remove('hidden');
+    // ============================================================
+    // 全屏高清大图交互式浏览系统 (支持双击快速放大、双指捏合缩放、单指平移、旋转与原寸还原)
+    // ============================================================
+    const fullscreenModal = document.getElementById('fullscreenModal');
+    const fullscreenImgViewport = document.getElementById('fullscreenImgViewport');
+    const fullscreenImg = document.getElementById('fullscreenImg');
+    const fullscreenZoomLevel = document.getElementById('fullscreenZoomLevel');
+    const btnFullscreenDownload = document.getElementById('btnFullscreenDownload');
+    const btnCloseFullscreen = document.getElementById('btnCloseFullscreen');
+    const btnZoomIn = document.getElementById('btnZoomIn');
+    const btnZoomOut = document.getElementById('btnZoomOut');
+    const btnZoomReset = document.getElementById('btnZoomReset');
+    const btnZoom100 = document.getElementById('btnZoom100');
+    const btnRotateRight = document.getElementById('btnRotateRight');
+
+    let fsScale = 1;
+    let fsTranslateX = 0;
+    let fsTranslateY = 0;
+    let fsRotation = 0;
+    let fsIsDragging = false;
+    let fsStartX = 0;
+    let fsStartY = 0;
+    let fsInitialPinchDist = 0;
+    let fsInitialPinchScale = 1;
+    let fsLastTapTime = 0;
+    let fsDragMoved = false;
+
+    function applyFsTransform(withTransition = true) {
+      if (!fullscreenImg) return;
+      fullscreenImg.style.transition = withTransition ? 'transform 0.12s cubic-bezier(0.2, 0, 0, 1)' : 'none';
+      fullscreenImg.style.transform = `translate(${fsTranslateX}px, ${fsTranslateY}px) scale(${fsScale}) rotate(${fsRotation}deg)`;
+      if (fullscreenZoomLevel) {
+        fullscreenZoomLevel.innerText = `${Math.round(fsScale * 100)}%`;
+      }
     }
 
-    function closeFullscreen() {
-      document.getElementById('fullscreenModal').classList.add('hidden');
+    function resetFsTransform() {
+      fsScale = 1;
+      fsTranslateX = 0;
+      fsTranslateY = 0;
+      fsRotation = 0;
+      fsIsDragging = false;
+      fsDragMoved = false;
+      applyFsTransform(false);
     }
+
+    function openFullscreen(src) {
+      if (!src) return;
+      resetFsTransform();
+      if (fullscreenImg) fullscreenImg.src = src;
+      if (btnFullscreenDownload) btnFullscreenDownload.href = src;
+      if (fullscreenModal) {
+        fullscreenModal.classList.remove('hidden');
+        document.body.style.overflow = 'hidden';
+      }
+    }
+    window.openFullscreen = openFullscreen;
+
+    function closeFullscreen() {
+      if (fullscreenModal) {
+        fullscreenModal.classList.add('hidden');
+        document.body.style.overflow = '';
+      }
+      resetFsTransform();
+    }
+    window.closeFullscreen = closeFullscreen;
+
+    if (btnZoomIn) {
+      btnZoomIn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        fsScale = Math.min(fsScale * 1.35, 6.0);
+        applyFsTransform(true);
+      });
+    }
+
+    if (btnZoomOut) {
+      btnZoomOut.addEventListener('click', (e) => {
+        e.stopPropagation();
+        fsScale = Math.max(fsScale / 1.35, 0.4);
+        if (fsScale <= 1) {
+          fsTranslateX = 0;
+          fsTranslateY = 0;
+        }
+        applyFsTransform(true);
+      });
+    }
+
+    if (btnZoomReset) {
+      btnZoomReset.addEventListener('click', (e) => {
+        e.stopPropagation();
+        resetFsTransform();
+      });
+    }
+
+    if (btnZoom100) {
+      btnZoom100.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (fullscreenImg && fullscreenImg.naturalWidth && fullscreenImg.clientWidth) {
+          fsScale = Math.max(0.6, Math.min(5.0, fullscreenImg.naturalWidth / fullscreenImg.clientWidth));
+        } else {
+          fsScale = 2.0;
+        }
+        fsTranslateX = 0;
+        fsTranslateY = 0;
+        applyFsTransform(true);
+      });
+    }
+
+    if (btnRotateRight) {
+      btnRotateRight.addEventListener('click', (e) => {
+        e.stopPropagation();
+        fsRotation = (fsRotation + 90) % 360;
+        applyFsTransform(true);
+      });
+    }
+
+    if (btnCloseFullscreen) {
+      btnCloseFullscreen.addEventListener('click', (e) => {
+        e.stopPropagation();
+        closeFullscreen();
+      });
+    }
+
+    // 视口桌面端滚轮缩放
+    if (fullscreenImgViewport) {
+      fullscreenImgViewport.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const factor = e.deltaY > 0 ? 0.88 : 1.15;
+        const newScale = Math.max(0.4, Math.min(6.0, fsScale * factor));
+        fsScale = newScale;
+        if (fsScale <= 1) {
+          fsTranslateX = 0;
+          fsTranslateY = 0;
+        }
+        applyFsTransform(false);
+      }, { passive: false });
+
+      // 鼠标拖拽平移
+      fullscreenImgViewport.addEventListener('mousedown', (e) => {
+        if (e.button !== 0) return;
+        fsIsDragging = true;
+        fsDragMoved = false;
+        fsStartX = e.clientX - fsTranslateX;
+        fsStartY = e.clientY - fsTranslateY;
+      });
+
+      window.addEventListener('mousemove', (e) => {
+        if (!fsIsDragging) return;
+        const moveX = e.clientX - fsStartX;
+        const moveY = e.clientY - fsStartY;
+        if (Math.abs(moveX - fsTranslateX) > 3 || Math.abs(moveY - fsTranslateY) > 3) {
+          fsDragMoved = true;
+        }
+        fsTranslateX = moveX;
+        fsTranslateY = moveY;
+        applyFsTransform(false);
+      });
+
+      window.addEventListener('mouseup', () => {
+        fsIsDragging = false;
+      });
+
+      // 双击视口切换 1x / 2.5x 放大
+      fullscreenImgViewport.addEventListener('dblclick', (e) => {
+        if (e.target.closest('button') || e.target.closest('a')) return;
+        if (fsScale > 1.2) {
+          resetFsTransform();
+        } else {
+          fsScale = 2.5;
+          applyFsTransform(true);
+        }
+      });
+
+      // 移动端 Touch 单指平移、双击缩放、双指捏合缩放
+      fullscreenImgViewport.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 1) {
+          fsIsDragging = true;
+          fsDragMoved = false;
+          fsStartX = e.touches[0].clientX - fsTranslateX;
+          fsStartY = e.touches[0].clientY - fsTranslateY;
+
+          // 移动端双击检测
+          const now = Date.now();
+          if (now - fsLastTapTime < 300) {
+            e.preventDefault();
+            if (fsScale > 1.2) {
+              resetFsTransform();
+            } else {
+              fsScale = 2.5;
+              applyFsTransform(true);
+            }
+            fsLastTapTime = 0;
+          } else {
+            fsLastTapTime = now;
+          }
+        } else if (e.touches.length === 2) {
+          fsIsDragging = false;
+          fsDragMoved = true;
+          fsInitialPinchDist = Math.hypot(
+            e.touches[0].clientX - e.touches[1].clientX,
+            e.touches[0].clientY - e.touches[1].clientY
+          );
+          fsInitialPinchScale = fsScale;
+        }
+      }, { passive: false });
+
+      fullscreenImgViewport.addEventListener('touchmove', (e) => {
+        if (e.touches.length === 1 && fsIsDragging) {
+          e.preventDefault();
+          const moveX = e.touches[0].clientX - fsStartX;
+          const moveY = e.touches[0].clientY - fsStartY;
+          if (Math.abs(moveX - fsTranslateX) > 4 || Math.abs(moveY - fsTranslateY) > 4) {
+            fsDragMoved = true;
+          }
+          fsTranslateX = moveX;
+          fsTranslateY = moveY;
+          applyFsTransform(false);
+        } else if (e.touches.length === 2 && fsInitialPinchDist > 0) {
+          e.preventDefault();
+          fsDragMoved = true;
+          const curDist = Math.hypot(
+            e.touches[0].clientX - e.touches[1].clientX,
+            e.touches[0].clientY - e.touches[1].clientY
+          );
+          const ratio = curDist / fsInitialPinchDist;
+          fsScale = Math.max(0.4, Math.min(6.0, fsInitialPinchScale * ratio));
+          applyFsTransform(false);
+        }
+      }, { passive: false });
+
+      fullscreenImgViewport.addEventListener('touchend', (e) => {
+        if (e.touches.length === 0) {
+          fsIsDragging = false;
+          if (fsScale < 0.85) {
+            resetFsTransform();
+          }
+        } else if (e.touches.length === 1) {
+          fsStartX = e.touches[0].clientX - fsTranslateX;
+          fsStartY = e.touches[0].clientY - fsTranslateY;
+          fsIsDragging = true;
+        }
+      });
+
+      fullscreenImgViewport.addEventListener('touchcancel', () => {
+        fsIsDragging = false;
+      });
+
+      // 点击视口空白处退出 (在没有发生平移拖拽且未放大的状态下)
+      fullscreenImgViewport.addEventListener('click', (e) => {
+        if (fsDragMoved) return;
+        if (e.target === fullscreenImgViewport && fsScale <= 1.05) {
+          closeFullscreen();
+        }
+      });
+    }
+
+    // 全局快捷键 ESC 退出与 +/- 缩放
+    window.addEventListener('keydown', (e) => {
+      if (!fullscreenModal || fullscreenModal.classList.contains('hidden')) return;
+      if (e.key === 'Escape') {
+        closeFullscreen();
+      } else if (e.key === '+' || e.key === '=') {
+        fsScale = Math.min(fsScale * 1.25, 6.0);
+        applyFsTransform(true);
+      } else if (e.key === '-') {
+        fsScale = Math.max(fsScale / 1.25, 0.4);
+        applyFsTransform(true);
+      } else if (e.key === 'r' || e.key === 'R') {
+        fsRotation = (fsRotation + 90) % 360;
+        applyFsTransform(true);
+      } else if (e.key === '0') {
+        resetFsTransform();
+      }
+    });
 
     // ============================================================
     // 试卷预览与纠错安全桩 (系统聚焦纯净OMR极速批改)

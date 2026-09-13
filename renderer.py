@@ -10,13 +10,25 @@ from PIL import Image, ImageDraw, ImageFont
 
 
 def get_available_chinese_font(size: int = 24):
-    """获取系统中可用的中文字体"""
+    """获取系统中可用的中文字体（确保 Linux/macOS/Windows 各系统下绝不出现乱码豆腐块）"""
     candidates = [
+        # Linux (Ubuntu / Debian / Docker)
+        "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+        "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
+        "/usr/share/fonts/truetype/arphic/uming.ttc",
+        # macOS
         "/System/Library/Fonts/Hiragino Sans GB.ttc",
         "/System/Library/Fonts/STHeiti Light.ttc",
         "/Library/Fonts/Arial Unicode.ttf",
         "/System/Library/Fonts/Supplemental/Songti.ttc",
-        "/System/Library/Fonts/PingFang.ttc"
+        "/System/Library/Fonts/PingFang.ttc",
+        # Windows
+        "C:\\Windows\\Fonts\\msyh.ttc",
+        "C:\\Windows\\Fonts\\simhei.ttf",
     ]
     for p in candidates:
         if os.path.exists(p):
@@ -24,6 +36,11 @@ def get_available_chinese_font(size: int = 24):
                 return ImageFont.truetype(p, size)
             except Exception:
                 continue
+    for name in ["wqy-microhei", "wqy-zenhei", "WenQuanYi Micro Hei", "Noto Sans CJK SC", "SimHei", "Microsoft YaHei"]:
+        try:
+            return ImageFont.truetype(name, size)
+        except Exception:
+            pass
     return ImageFont.load_default()
 
 
@@ -46,6 +63,11 @@ def get_cross_segments(cx: float, cy: float, size: float) -> List[Tuple[Tuple[fl
 def get_bold_number_font(size: int = 26):
     """获取系统中可用的粗体数字英文字体"""
     candidates = [
+        # Linux
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+        "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+        # macOS
         "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
         "/Library/Fonts/Arial Bold.ttf",
         "/System/Library/Fonts/Helvetica.ttc",
@@ -301,6 +323,8 @@ def draw_summary_card_on_pil(
     # Arial / 罗马大字体用于等级 A+
     font_grade = None
     arial_candidates = [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
         "/Library/Fonts/Arial Unicode.ttf",
         "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
         "/System/Library/Fonts/Helvetica.ttc"

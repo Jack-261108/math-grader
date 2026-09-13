@@ -223,13 +223,27 @@ def deskew_omr_sheet(img_bgr: np.ndarray) -> Tuple[np.ndarray, float]:
 
 
 def get_chinese_font(size: int = 14, bold: bool = False) -> Any:
-    """获取系统中可用的中文字体（确保中文绝不显示为方块乱码）"""
+    """获取系统中可用的中文字体（确保在 Linux/macOS/Windows 各平台下绝不显示为方块豆腐块乱码）"""
     candidates = [
+        # Linux (Ubuntu / Debian / CentOS / Alpine / Docker)
+        "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+        "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
+        "/usr/share/fonts/truetype/arphic/uming.ttc",
+        "/usr/share/fonts/truetype/arphic/ukai.ttc",
+        # macOS
         "/System/Library/Fonts/Hiragino Sans GB.ttc",
         "/System/Library/Fonts/STHeiti Medium.ttc" if bold else "/System/Library/Fonts/STHeiti Light.ttc",
         "/Library/Fonts/Arial Unicode.ttf",
         "/System/Library/Fonts/Supplemental/Songti.ttc",
-        "/System/Library/Fonts/PingFang.ttc"
+        "/System/Library/Fonts/PingFang.ttc",
+        # Windows
+        "C:\\Windows\\Fonts\\msyh.ttc",
+        "C:\\Windows\\Fonts\\simhei.ttf",
+        "C:\\Windows\\Fonts\\simsun.ttc",
     ]
     for p in candidates:
         if os.path.exists(p):
@@ -237,12 +251,23 @@ def get_chinese_font(size: int = 14, bold: bool = False) -> Any:
                 return ImageFont.truetype(p, size)
             except Exception:
                 continue
+    # 尝试直接通过字体名称加载
+    for name in ["wqy-microhei", "wqy-zenhei", "WenQuanYi Micro Hei", "Noto Sans CJK SC", "SimHei", "Microsoft YaHei"]:
+        try:
+            return ImageFont.truetype(name, size)
+        except Exception:
+            pass
     return ImageFont.load_default()
 
 
 def get_number_font(size: int = 24, bold: bool = True) -> Any:
     """获取纯数字/英文字体"""
     candidates = [
+        # Linux
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+        "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+        # macOS
         "/System/Library/Fonts/Supplemental/Arial Bold.ttf" if bold else "/System/Library/Fonts/Supplemental/Arial.ttf",
         "/Library/Fonts/Arial Bold.ttf",
         "/System/Library/Fonts/Helvetica.ttc",
