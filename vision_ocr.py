@@ -7,6 +7,7 @@ import os
 import json
 import base64
 import urllib.request
+from urllib.error import HTTPError
 from typing import Dict, Any, Optional
 import cv2
 import numpy as np
@@ -88,6 +89,22 @@ OCR_PROMPT = """这是一张公考速算技巧练习表格（表格通常有表�
 """
 
 
+def build_messages_url(base_url: str) -> str:
+    """智能解析并规范化 Base URL，兼容处理多种用户输入格式：
+    - https://api.anthropic.com -> https://api.anthropic.com/v1/messages
+    - https://api.example.com/v1 -> https://api.example.com/v1/messages (防止拼成 /v1/v1/messages)
+    - https://api.example.com/v1/messages -> https://api.example.com/v1/messages
+    """
+    clean = base_url.strip().rstrip('/')
+    if clean.endswith('/v1/messages'):
+        return clean
+    if clean.endswith('/messages'):
+        return clean
+    if clean.endswith('/v1'):
+        return f"{clean}/messages"
+    return f"{clean}/v1/messages"
+
+
 def recognize_sheet_table(
     img: np.ndarray,
     model: Optional[str] = None,
@@ -109,24 +126,18 @@ def recognize_sheet_table(
     """
     _load_dotenv()
 
-    # 1. 解析 Base URL
-    effective_base_url = (
-        base_url.strip() if (base_url and base_url.strip())
-        else os.environ.get("ANTHROPIC_BASE_URL", "").strip()
-    )
+    # 1. 解析 Base URL (必须显式传入或用户配置)
+    effective_base_url = base_url.strip() if (base_url and base_url.strip()) else ""
     if not effective_base_url:
-        effective_base_url = "https://api.anthropic.com"
+        raise ValueError(
+            "未配置 Base URL，请在【设置】中填写您的 API Base URL (BYOK)。"
+        )
 
-    # 2. 解析 API Key
-    effective_api_key = (
-        api_key.strip() if (api_key and api_key.strip())
-        else os.environ.get("ANTHROPIC_AUTH_TOKEN", "").strip()
-    )
+    # 2. 解析 API Key (必须显式传入或用户配置)
+    effective_api_key = api_key.strip() if (api_key and api_key.strip()) else ""
     if not effective_api_key:
         raise ValueError(
-            "未配置 API Key！\n"
-            "• 手机/网页端使用：请点击页面右上角【⚙️ 设置】填入您的 API Key（仅保存在您的手机本地浏览器，不上传服务器）；\n"
-            "• 服务器命令行使用：请在项目根目录配置 .env 文件或设置环境变量 ANTHROPIC_AUTH_TOKEN。"
+            "未配置 API Key，请在【设置】中填写您的 API Key (BYOK)。"
         )
 
     # 3. 解析候选模型
@@ -138,14 +149,14 @@ def recognize_sheet_table(
             candidate_models = [env_model]
         else:
             candidate_models = [
-                "claude-fable-5-dd-hgih-hsalf-8.3-inimeg",
-                os.environ.get("ANTHROPIC_DEFAULT_SONNET_MODEL", "claude-sonnet-4-6"),
                 "claude-3-5-sonnet-20241022",
+                "claude-3-7-sonnet-20250219",
+                "claude-3-5-haiku-20241022",
                 "gemini-2.5-flash"
             ]
 
     img_b64 = encode_image_base64(img, max_side=1400)
-    url = f"{effective_base_url.rstrip('/')}/v1/messages"
+    url = build_messages_url(effective_base_url)
     headers = {
         "x-api-key": effective_api_key,
         "authorization": f"Bearer {effective_api_key}",
@@ -209,7 +220,31 @@ def recognize_sheet_table(
                 end = text_content.rfind("}")
                 if start != -1 and end != -1:
                     return json.loads(text_content[start:end+1])
+        except HTTPError as he:
+            err_body = ""
+            try:
+                err_body = he.read().decode('utf-8', errors='ignore')
+            except Exception:
+                pass
+            print(f"[Vision OCR HTTPError] URL: {url}, Model: {cand_model}, Code: {he.code}, Reason: {he.reason}, Body: {err_body[:400]}")
+            msg = f"HTTP {he.code} ({he.reason})"
+            if err_body:
+                try:
+                    err_json = json.loads(err_body)
+                    if isinstance(err_json, dict) and "error" in err_json:
+                        e_val = err_json["error"]
+                        if isinstance(e_val, dict):
+                            msg += f": {e_val.get('message') or e_val.get('type') or str(e_val)}"
+                        else:
+                            msg += f": {e_val}"
+                    else:
+                        msg += f": {err_body[:200]}"
+                except Exception:
+                    msg += f": {err_body[:200]}"
+            last_err = msg
+            continue
         except Exception as e:
+            print(f"[Vision OCR Error] URL: {url}, Model: {cand_model}, Error: {str(e)}")
             last_err = e
             continue
 

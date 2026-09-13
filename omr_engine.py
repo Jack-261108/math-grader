@@ -8,7 +8,8 @@ import sys
 import re
 import json
 import urllib.request
-from typing import Dict, Optional, Any
+from urllib.error import HTTPError
+from typing import Dict, Optional, Any, Tuple
 import numpy as np
 
 cur_dir = os.path.dirname(os.path.abspath(__file__))
@@ -19,13 +20,16 @@ import vision_ocr  # type: ignore
 import omr_judge   # type: ignore
 
 
-OMR_PROMPT_TEMPLATE = """你是一个高精度的选择题答题卡/填涂卡(OMR)识别专家。
+OMR_PROMPT_TEMPLATE = """你是一个高精度的选择题答题卡/填涂卡(OMR)识别与定位专家。
 这是一张公考《行政职业能力测验》（行测）或其他考试的选择题答题卡照片。
 当前答题卡预计题数范围为：第 1 题至第 {total_questions} 题。
 
-请仔细按题号顺序逐题识别学生的作答填涂情况：
-1. 每题选项通常为 A、B、C、D 四个单选题选项；
-2. 填涂判断准则：
+请完成以下两项任务：
+1. 定位客观题作答矩阵区域与各列各行边界（归一化坐标 0~1000）：
+   - grid_box: [ymin, xmin, ymax, xmax] 作答矩阵总体矩形范围
+   - cols: 4 列各列从左到右的 [xmin, xmax] 范围（例如 [[95, 275], [285, 465], [475, 650], [660, 860]]）
+   - bands: 7 个横向题块（每5题一组）从上到下的 [ymin, ymax] 范围
+2. 逐题按题号顺序识别学生的作答填涂情况：
    - 正常清晰填涂：提取填涂的选项字母，如 "A", "B", "C", "D"；
    - 包含手写字母（如写了 A、B、C、D）而非填涂块的答题纸：同样识别其手写的最终字母；
    - 空白未填涂/未作答：输出 null；
@@ -38,6 +42,11 @@ OMR_PROMPT_TEMPLATE = """你是一个高精度的选择题答题卡/填涂卡(OM
 {{
   "sheet_type": "omr_standard",
   "total_detected": {total_questions},
+  "grid_layout": {{
+    "grid_box": [260, 90, 850, 860],
+    "cols": [[90, 275], [285, 465], [475, 650], [660, 860]],
+    "bands": [[260, 340], [342, 422], [424, 502], [504, 584], [586, 666], [668, 752], [754, 846]]
+  }},
   "answers": [
     {{"q": 1, "ans": "A"}},
     {{"q": 2, "ans": "B"}},
@@ -56,9 +65,10 @@ def recognize_omr_sheet(
     model: Optional[str] = None,
     timeout: int = 120,
     base_url: Optional[str] = None,
-    api_key: Optional[str] = None
-) -> Dict[int, Optional[str]]:
-    """调用多模态视觉模型识别填涂卡照片，返回 {题号: 选项} 映射字典。
+    api_key: Optional[str] = None,
+    return_layout: bool = False
+) -> Any:
+    """调用多模态视觉模型识别填涂卡照片，返回 {题号: 选项} 映射字典（以及可选空间几何定位）。
 
     参数：
         - img: 手机拍摄的答题卡图像 (cv2 / numpy ndarray)
@@ -67,28 +77,25 @@ def recognize_omr_sheet(
         - timeout: 请求超时秒数
         - base_url: 客户端自定义 Base URL (BYOK)
         - api_key: 客户端自定义 API Key (BYOK)
+        - return_layout: 若为 True，返回 (answers_map, grid_layout)；否则仅返回 answers_map
 
     返回：
-        Dict[int, Optional[str]]: 如 {1: 'A', 2: 'C', 3: None, 4: 'multiple'}
+        Dict[int, Optional[str]] 或 Tuple[Dict[int, Optional[str]], Optional[Dict[str, Any]]]
     """
     vision_ocr._load_dotenv()
 
-    effective_base_url = (
-        base_url.strip() if (base_url and base_url.strip())
-        else os.environ.get("ANTHROPIC_BASE_URL", "").strip()
-    )
+    # 1. 解析 Base URL (必须显式传入或用户配置)
+    effective_base_url = base_url.strip() if (base_url and base_url.strip()) else ""
     if not effective_base_url:
-        effective_base_url = "https://api.anthropic.com"
+        raise ValueError(
+            "未配置 Base URL，请在【设置】中填写您的 API Base URL (BYOK)。"
+        )
 
-    effective_api_key = (
-        api_key.strip() if (api_key and api_key.strip())
-        else os.environ.get("ANTHROPIC_AUTH_TOKEN", "").strip()
-    )
+    # 2. 解析 API Key (必须显式传入或用户配置)
+    effective_api_key = api_key.strip() if (api_key and api_key.strip()) else ""
     if not effective_api_key:
         raise ValueError(
-            "未配置 API Key！\n"
-            "• 手机/网页端使用：请点击页面右上角【⚙️ 设置】填入您的 API Key（仅保存在您的手机本地浏览器，不上传服务器）；\n"
-            "• 服务器命令行使用：请在项目根目录配置 .env 文件或设置环境变量 ANTHROPIC_AUTH_TOKEN。"
+            "未配置 API Key，请在【设置】中填写您的 API Key (BYOK)。"
         )
 
     if model and model.strip():
@@ -99,16 +106,16 @@ def recognize_omr_sheet(
             candidate_models = [env_model]
         else:
             candidate_models = [
-                "claude-fable-5-dd-hgih-hsalf-8.3-inimeg",
-                os.environ.get("ANTHROPIC_DEFAULT_SONNET_MODEL", "claude-sonnet-4-6"),
                 "claude-3-5-sonnet-20241022",
+                "claude-3-7-sonnet-20250219",
+                "claude-3-5-haiku-20241022",
                 "gemini-2.5-flash"
             ]
 
     img_b64 = vision_ocr.encode_image_base64(img, max_side=1600)
     prompt = OMR_PROMPT_TEMPLATE.format(total_questions=expected_total_q)
 
-    url = f"{effective_base_url.rstrip('/')}/v1/messages"
+    url = vision_ocr.build_messages_url(effective_base_url)
     headers = {
         "x-api-key": effective_api_key,
         "authorization": f"Bearer {effective_api_key}",
@@ -155,33 +162,68 @@ def recognize_omr_sheet(
                 if block.get("type") == "text":
                     content_text += block.get("text", "")
 
-            # 提取结构化数据
-            result_map = parse_omr_response_text(content_text)
-            if result_map:
-                return result_map
+            # 提取结构化数据与几何空间定位
+            answers_map, grid_layout = parse_omr_response_text(content_text)
+            if answers_map:
+                if return_layout:
+                    return answers_map, grid_layout
+                return answers_map
 
+        except HTTPError as he:
+            err_body = ""
+            try:
+                err_body = he.read().decode('utf-8', errors='ignore')
+            except Exception:
+                pass
+            print(f"[OMR Engine HTTPError] URL: {url}, Model: {cand_model}, Code: {he.code}, Reason: {he.reason}, Body: {err_body[:400]}")
+            msg = f"HTTP {he.code} ({he.reason})"
+            if err_body:
+                try:
+                    err_json = json.loads(err_body)
+                    if isinstance(err_json, dict) and "error" in err_json:
+                        e_val = err_json["error"]
+                        if isinstance(e_val, dict):
+                            msg += f": {e_val.get('message') or e_val.get('type') or str(e_val)}"
+                        else:
+                            msg += f": {e_val}"
+                    else:
+                        msg += f": {err_body[:200]}"
+                except Exception:
+                    msg += f": {err_body[:200]}"
+            last_err = msg
+            continue
         except Exception as e:
+            print(f"[OMR Engine Error] URL: {url}, Model: {cand_model}, Error: {str(e)}")
             last_err = e
             continue
 
     if last_err:
         raise RuntimeError(f"答题卡多模态视觉识别请求全部失败: {str(last_err)}")
+    if return_layout:
+        return {}, None
     return {}
 
 
-def parse_omr_response_text(raw_text: str) -> Dict[int, Optional[str]]:
-    """从模型返回文本中提取结构化答题卡选项映射"""
+def parse_omr_response_text(raw_text: str) -> Tuple[Dict[int, Optional[str]], Optional[Dict[str, Any]]]:
+    """从模型返回文本中提取结构化答题卡选项映射与答题卡几何空间布局"""
     if not raw_text:
-        return {}
+        return {}, None
 
     # 1. 尝试从 markdown json 代码块中提取
     json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', raw_text, re.DOTALL)
     text_to_parse = json_match.group(1) if json_match else raw_text
 
     answers_map: Dict[int, Optional[str]] = {}
+    grid_layout: Optional[Dict[str, Any]] = None
+
     try:
         data = json.loads(text_to_parse)
         if isinstance(data, dict):
+            # 提取几何布局
+            layout_candidate = data.get("grid_layout")
+            if isinstance(layout_candidate, dict) and "bands" in layout_candidate and "cols" in layout_candidate:
+                grid_layout = layout_candidate
+
             # 形式: {"answers": [{"q": 1, "ans": "A"}, ...]}
             ans_list = data.get("answers", [])
             for item in ans_list:
@@ -201,7 +243,7 @@ def parse_omr_response_text(raw_text: str) -> Dict[int, Optional[str]]:
                         except ValueError:
                             pass
             if answers_map:
-                return answers_map
+                return answers_map, grid_layout
     except Exception:
         pass
 
@@ -216,7 +258,7 @@ def parse_omr_response_text(raw_text: str) -> Dict[int, Optional[str]]:
         else:
             answers_map[qid] = ans_str.upper()
 
-    return answers_map
+    return answers_map, grid_layout
 
 
 ANSWER_KEY_PROMPT = """你是一个高精度的试卷/模考标准答案提取专家。
@@ -271,22 +313,18 @@ def recognize_answer_key_image(
     """
     vision_ocr._load_dotenv()
 
-    effective_base_url = (
-        base_url.strip() if (base_url and base_url.strip())
-        else os.environ.get("ANTHROPIC_BASE_URL", "").strip()
-    )
+    # 1. 解析 Base URL (必须显式传入或用户配置)
+    effective_base_url = base_url.strip() if (base_url and base_url.strip()) else ""
     if not effective_base_url:
-        effective_base_url = "https://api.anthropic.com"
+        raise ValueError(
+            "未配置 Base URL，请在【设置】中填写您的 API Base URL (BYOK)。"
+        )
 
-    effective_api_key = (
-        api_key.strip() if (api_key and api_key.strip())
-        else os.environ.get("ANTHROPIC_AUTH_TOKEN", "").strip()
-    )
+    # 2. 解析 API Key (必须显式传入或用户配置)
+    effective_api_key = api_key.strip() if (api_key and api_key.strip()) else ""
     if not effective_api_key:
         raise ValueError(
-            "未配置 API Key！\n"
-            "• 手机/网页端使用：请点击页面右上角【⚙️ 设置】填入您的 API Key（仅保存在您的手机本地浏览器，不上传服务器）；\n"
-            "• 服务器命令行使用：请在项目根目录配置 .env 文件或设置环境变量 ANTHROPIC_AUTH_TOKEN。"
+            "未配置 API Key，请在【设置】中填写您的 API Key (BYOK)。"
         )
 
     if model and model.strip():
@@ -297,15 +335,15 @@ def recognize_answer_key_image(
             candidate_models = [env_model]
         else:
             candidate_models = [
-                "claude-fable-5-dd-hgih-hsalf-8.3-inimeg",
-                os.environ.get("ANTHROPIC_DEFAULT_SONNET_MODEL", "claude-sonnet-4-6"),
                 "claude-3-5-sonnet-20241022",
+                "claude-3-7-sonnet-20250219",
+                "claude-3-5-haiku-20241022",
                 "gemini-2.5-flash"
             ]
 
     img_b64 = vision_ocr.encode_image_base64(img, max_side=1600)
 
-    url = f"{effective_base_url.rstrip('/')}/v1/messages"
+    url = vision_ocr.build_messages_url(effective_base_url)
     headers = {
         "x-api-key": effective_api_key,
         "authorization": f"Bearer {effective_api_key}",
@@ -401,7 +439,31 @@ def recognize_answer_key_image(
                     "answers": parsed_fallback
                 }
 
+        except HTTPError as he:
+            err_body = ""
+            try:
+                err_body = he.read().decode('utf-8', errors='ignore')
+            except Exception:
+                pass
+            print(f"[OMR Answer Key HTTPError] URL: {url}, Model: {cand_model}, Code: {he.code}, Reason: {he.reason}, Body: {err_body[:400]}")
+            msg = f"HTTP {he.code} ({he.reason})"
+            if err_body:
+                try:
+                    err_json = json.loads(err_body)
+                    if isinstance(err_json, dict) and "error" in err_json:
+                        e_val = err_json["error"]
+                        if isinstance(e_val, dict):
+                            msg += f": {e_val.get('message') or e_val.get('type') or str(e_val)}"
+                        else:
+                            msg += f": {e_val}"
+                    else:
+                        msg += f": {err_body[:200]}"
+                except Exception:
+                    msg += f": {err_body[:200]}"
+            last_err = msg
+            continue
         except Exception as e:
+            print(f"[OMR Answer Key Error] URL: {url}, Model: {cand_model}, Error: {str(e)}")
             last_err = e
             continue
 

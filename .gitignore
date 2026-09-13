@@ -45,3 +45,6 @@ venv.bak/
 output/*
 !output/.gitkeep
 *.log
+
+# Local test datasets & extracted pdfs
+data/
