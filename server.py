@@ -852,6 +852,11 @@ UVICORN_LOG_CONFIG = {
             "class": "logging.StreamHandler",
             "stream": "ext://sys.stderr",
         },
+        "stdout": {
+            "formatter": "default",
+            "class": "logging.StreamHandler",
+            "stream": "ext://sys.stdout",
+        },
         "access": {
             "formatter": "access",
             "class": "logging.StreamHandler",
@@ -862,7 +867,7 @@ UVICORN_LOG_CONFIG = {
         "uvicorn": {"handlers": ["default"], "level": "INFO"},
         "uvicorn.error": {"level": "INFO"},
         "uvicorn.access": {"handlers": ["access"], "level": "INFO", "propagate": False},
-        "math-grader": {"handlers": ["access"], "level": "INFO", "propagate": False},
+        "math-grader": {"handlers": ["stdout"], "level": "INFO", "propagate": False},
     },
 }
 
