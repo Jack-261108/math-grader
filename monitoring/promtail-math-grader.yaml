@@ -1,0 +1,57 @@
+# Promtail math-grader 日志采集配置片段
+# 追加到 /opt/promtail/promtail-config.yaml 的 scrape_configs 中
+
+  - job_name: math-grader
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: math-grader
+          service_name: math-grader
+          host: server1
+          __path__: /var/log/math-grader.*.log
+
+    pipeline_stages:
+      - regex:
+          source: filename
+          expression: 'math-grader\.(?P<stream>out|err)\.log'
+
+      - template:
+          source: stream
+          template: '{{ if eq .stream "out" }}stdout{{ else if eq .stream "err" }}stderr{{ else }}{{ .stream }}{{ end }}'
+
+      - labels:
+          stream:
+
+      - multiline:
+          firstline: '^(\d{4}[-/]\d{2}[-/]\d{2}|(INFO|WARNING|WARN|ERROR|CRITICAL|DEBUG):)'
+          max_wait_time: 3s
+
+      - regex:
+          expression: '^(?P<time>\d{4}[-/]\d{2}[-/]\d{2} \d{2}:\d{2}:\d{2})'
+
+      - timestamp:
+          source: time
+          format: '2006-01-02 15:04:05'
+          location: 'Asia/Shanghai'
+
+      - regex:
+          expression: '"(?P<method>GET|POST|PUT|DELETE|HEAD|OPTIONS) (?P<path>[^"]+)" (?P<status_code>\d{3})'
+
+      - regex:
+          expression: '(?i)(\[(?P<lvl1>INFO|WARN|WARNING|ERROR|CRITICAL|DEBUG)\]|(?P<lvl2>INFO|WARN|WARNING|ERROR|CRITICAL|DEBUG):)'
+
+      - regex:
+          expression: '(?i)(?P<has_error>exception|traceback|error|failed|失败|crash)'
+
+      - regex:
+          expression: '(?i)(?P<has_warn>warn|警告)'
+
+      - template:
+          source: level
+          template: '{{ if .status_code }}{{ if ge (atoi .status_code) 500 }}error{{ else if ge (atoi .status_code) 400 }}warn{{ else }}info{{ end }}{{ else if or (eq (ToLower .lvl1) "error") (eq (ToLower .lvl2) "error") (eq (ToLower .lvl1) "critical") (eq (ToLower .lvl2) "critical") }}error{{ else if or (eq (ToLower .lvl1) "warn") (eq (ToLower .lvl2) "warn") (eq (ToLower .lvl1) "warning") (eq (ToLower .lvl2) "warning") }}warn{{ else if .has_error }}error{{ else if .has_warn }}warn{{ else }}info{{ end }}'
+
+      - labels:
+          level:
+          status_code:
+          method:
