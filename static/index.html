@@ -1386,14 +1386,54 @@
 
   <script>
     // ============================================================
-    // 1. 顶层模式切换 (速算练习册 vs 行测答题卡)
+    // 1. 顶层模式切换 (速算练习册 vs 行测答题卡) & SPA URL 状态同步
     // ============================================================
     const modeTabMath = document.getElementById('modeTabMath');
     const modeTabOmr = document.getElementById('modeTabOmr');
     const mathView = document.getElementById('mathView');
     const omrView = document.getElementById('omrView');
 
-    function switchMode(mode) {
+    function syncUrlState(customParams = null) {
+      try {
+        const url = new URL(window.location.href);
+        const isOmr = !omrView.classList.contains('hidden');
+        const currentMode = isOmr ? 'omr' : 'math';
+
+        url.searchParams.set('mode', currentMode);
+
+        if (customParams && typeof customParams === 'object') {
+          Object.keys(customParams).forEach(k => {
+            if (customParams[k] === null || customParams[k] === undefined || customParams[k] === '') {
+              url.searchParams.delete(k);
+            } else {
+              url.searchParams.set(k, customParams[k]);
+            }
+          });
+        } else {
+          if (currentMode === 'omr') {
+            const isResultVisible = omrResultSection && !omrResultSection.classList.contains('hidden');
+            if (isResultVisible && currentOmrData && currentOmrData.task_id) {
+              url.searchParams.set('task_id', currentOmrData.task_id);
+            } else {
+              url.searchParams.delete('task_id');
+            }
+          } else {
+            const isResultVisible = resultSection && !resultSection.classList.contains('hidden');
+            if (isResultVisible && currentMathData && currentMathData.task_id) {
+              url.searchParams.set('task_id', currentMathData.task_id);
+            } else {
+              url.searchParams.delete('task_id');
+            }
+          }
+        }
+
+        window.history.replaceState({ mode: currentMode, task_id: url.searchParams.get('task_id') }, '', url.toString());
+      } catch (e) {
+        console.warn('Sync URL state failed:', e);
+      }
+    }
+
+    function switchMode(mode, updateUrl = false) {
       if (mode === 'omr') {
         modeTabOmr.className = "flex-1 py-2 rounded-lg bg-white shadow-xs text-slate-900 transition flex items-center justify-center space-x-1.5";
         modeTabMath.className = "flex-1 py-2 rounded-lg text-slate-500 hover:text-slate-800 transition flex items-center justify-center space-x-1.5";
@@ -1405,10 +1445,13 @@
         omrView.classList.add('hidden');
         mathView.classList.remove('hidden');
       }
+      if (updateUrl) {
+        syncUrlState();
+      }
     }
 
-    modeTabMath.addEventListener('click', () => switchMode('math'));
-    modeTabOmr.addEventListener('click', () => switchMode('omr'));
+    modeTabMath.addEventListener('click', () => switchMode('math', true));
+    modeTabOmr.addEventListener('click', () => switchMode('omr', true));
 
     // 客户端图片智能压缩与降维加速（针对手机拍照 15MB~30MB 超大原图，保持高质量同时压缩至数百KB，彻底解决移动网络 Failed to fetch 与超时中断）
     async function compressImage(file, maxSide = 2000, quality = 0.85) {
@@ -1510,11 +1553,7 @@
     btnRetry.addEventListener('click', () => {
       resultSection.classList.add('hidden');
       uploadSection.classList.remove('hidden');
-      try {
-        const newUrl = new URL(window.location.href);
-        newUrl.searchParams.delete('task_id');
-        window.history.replaceState(null, '', newUrl.toString());
-      } catch (e) {}
+      syncUrlState({ task_id: null });
       window.scrollTo({ top: 0, behavior: 'smooth' });
     });
 
@@ -1667,14 +1706,7 @@
       currentScanUrl = data.scan_url || (taskId ? `/output/${taskId}_annotated_scan.jpg` : '');
       currentOrigUrl = data.orig_url || (taskId ? `/output/${taskId}_annotated_original.jpg` : '');
 
-      if (taskId) {
-        try {
-          const newUrl = new URL(window.location.href);
-          newUrl.searchParams.set('task_id', taskId);
-          newUrl.searchParams.set('mode', 'math');
-          window.history.replaceState({ task_id: taskId, mode: 'math' }, '', newUrl.toString());
-        } catch (e) {}
-      }
+      syncUrlState({ mode: 'math', task_id: taskId || null });
 
       const placeholder = document.getElementById('imageLoadPlaceholder');
       if (placeholder) placeholder.classList.add('hidden');
@@ -2152,11 +2184,7 @@
     btnOmrRetry.addEventListener('click', () => {
       omrResultSection.classList.add('hidden');
       omrUploadSection.classList.remove('hidden');
-      try {
-        const newUrl = new URL(window.location.href);
-        newUrl.searchParams.delete('task_id');
-        window.history.replaceState(null, '', newUrl.toString());
-      } catch (e) {}
+      syncUrlState({ task_id: null });
       window.scrollTo({ top: 0, behavior: 'smooth' });
     });
 
@@ -3605,14 +3633,7 @@
       const btnOmrDownload = document.getElementById('btnOmrDownloadCard');
       if (btnOmrDownload && cardUrl) btnOmrDownload.href = cardUrl;
 
-      if (taskId) {
-        try {
-          const newUrl = new URL(window.location.href);
-          newUrl.searchParams.set('task_id', taskId);
-          newUrl.searchParams.set('mode', 'omr');
-          window.history.replaceState({ task_id: taskId, mode: 'omr' }, '', newUrl.toString());
-        } catch (e) {}
-      }
+      syncUrlState({ mode: 'omr', task_id: taskId || null });
 
       const urlParamsNow = new URLSearchParams(window.location.search);
       const targetTab = urlParamsNow.get('tab');
@@ -5429,6 +5450,41 @@
       });
     }
 
+    // 监听浏览器前进/后退事件 (SPA 路由双向同步还原)
+    window.addEventListener('popstate', (e) => {
+      const params = new URLSearchParams(window.location.search);
+      const curTaskId = params.get('task_id');
+      const curMode = params.get('mode') || (curTaskId && curTaskId.startsWith('omr_') ? 'omr' : 'math');
+
+      if (curMode === 'omr') {
+        switchMode('omr', false);
+        if (curTaskId) {
+          if (!currentOmrData || currentOmrData.task_id !== curTaskId) {
+            restoreHistoryTask(curTaskId, 'omr');
+          } else {
+            omrUploadSection.classList.add('hidden');
+            omrResultSection.classList.remove('hidden');
+          }
+        } else {
+          omrResultSection.classList.add('hidden');
+          omrUploadSection.classList.remove('hidden');
+        }
+      } else {
+        switchMode('math', false);
+        if (curTaskId) {
+          if (!currentMathData || currentMathData.task_id !== curTaskId) {
+            restoreHistoryTask(curTaskId, 'math');
+          } else {
+            uploadSection.classList.add('hidden');
+            resultSection.classList.remove('hidden');
+          }
+        } else {
+          resultSection.classList.add('hidden');
+          uploadSection.classList.remove('hidden');
+        }
+      }
+    });
+
     // 页面初始化
     updateAiBadge();
     selectPreset('guokao_135');
@@ -5454,20 +5510,19 @@
     }
 
     const initialTaskId = urlParams.get('task_id');
+    const isOmrUrl = urlParams.has('omr') || urlParams.get('mode') === 'omr' || (initialTaskId && initialTaskId.startsWith('omr_')) || window.location.hash.includes('omr');
+
     if (initialTaskId) {
       const targetMode = urlParams.get('mode') || (initialTaskId.startsWith('omr_') ? 'omr' : 'math');
       if (targetMode === 'omr') {
-        switchMode('omr');
+        switchMode('omr', false);
         restoreHistoryTask(initialTaskId, 'omr');
       } else {
-        switchMode('math');
+        switchMode('math', false);
         restoreHistoryTask(initialTaskId, 'math');
       }
-    }
-
-    const isOmrUrl = urlParams.has('omr') || urlParams.get('mode') === 'omr' || window.location.hash.includes('omr');
-    if (isOmrUrl) {
-      switchMode('omr');
+    } else if (isOmrUrl) {
+      switchMode('omr', false);
       if (urlParams.has('preset')) {
         const p = urlParams.get('preset');
         if (p) selectPreset(p);
