@@ -767,6 +767,39 @@ async def api_get_history_detail(task_id: str):
     try:
         with open(report_file, "r", encoding="utf-8") as f:
             data = json.load(f)
+
+        # 补齐 task_id 与资源静态访问 URL，确保前端从历史记录回溯还原时大图与错题正常展示
+        data["task_id"] = task_id
+        if str(task_id).startswith("omr_") or "section_results" in data:
+            data.setdefault("card_url", f"/output/{task_id}_card.jpg")
+            data.setdefault("report_url", f"/output/{task_id}_report.json")
+        else:
+            data.setdefault("scan_url", f"/output/{task_id}_annotated_scan.jpg")
+            data.setdefault("orig_url", f"/output/{task_id}_annotated_original.jpg")
+            data.setdefault("report_url", f"/output/{task_id}_report.json")
+            if "wrong_items" not in data and "items" in data:
+                wrong_items = []
+                for it in data.get("items", []):
+                    if it.get("status") == "wrong":
+                        op_type = it.get("op_type", "add")
+                        op_sym = "×" if op_type == "mul" else ("÷" if "div" in op_type else ("+" if op_type == "add" else "-"))
+                        wrong_items.append({
+                            "row_num": it.get("row_num"),
+                            "col_idx": it.get("col_idx"),
+                            "op_type": op_type,
+                            "op_symbol": op_sym,
+                            "a": it.get("a"),
+                            "b": it.get("b"),
+                            "expected": it.get("expected"),
+                            "student_raw": it.get("student_raw"),
+                            "expression": f"{it.get('a')} {op_sym} {it.get('b')}",
+                            "error_type": it.get("error_type", "calculation_error"),
+                            "error_name": it.get("error_name", "计算偏差"),
+                            "diagnosis": it.get("diagnosis", ""),
+                            "advice": it.get("advice", "")
+                        })
+                data["wrong_items"] = wrong_items
+
         logger.info(f"[History] 获取历史报告详情成功: task_id={task_id}")
         return {
             "status": "success",

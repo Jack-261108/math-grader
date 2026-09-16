@@ -1658,14 +1658,17 @@
       document.getElementById('resAcc').innerText = `${s.accuracy_pct}%`;
       document.getElementById('resWrong').innerText = s.wrong;
 
-      currentScanUrl = data.scan_url;
-      currentOrigUrl = data.orig_url;
+      const taskId = data.task_id || '';
+      currentScanUrl = data.scan_url || (taskId ? `/output/${taskId}_annotated_scan.jpg` : '');
+      currentOrigUrl = data.orig_url || (taskId ? `/output/${taskId}_annotated_original.jpg` : '');
 
       const placeholder = document.getElementById('imageLoadPlaceholder');
       if (placeholder) placeholder.classList.add('hidden');
       resultImage.dataset.retried = "0";
-      resultImage.src = currentScanUrl;
-      btnDownload.href = currentScanUrl;
+      if (currentScanUrl) {
+        resultImage.src = currentScanUrl;
+        btnDownload.href = currentScanUrl;
+      }
 
       // 智能学情
       const diag = data.diagnosis || {};
@@ -4819,9 +4822,13 @@
         }
         const res = await resp.json();
         const reportData = res.data;
+        if (reportData && !reportData.task_id) {
+          reportData.task_id = taskId;
+        }
 
         if (type === 'omr') {
           switchMode('omr');
+          if (!reportData.card_url) reportData.card_url = `/output/${taskId}_card.jpg`;
           renderOmrResult(reportData);
           closeHistoryModal();
           setTimeout(() => {
@@ -4829,6 +4836,8 @@
           }, 150);
         } else {
           switchMode('math');
+          if (!reportData.scan_url) reportData.scan_url = `/output/${taskId}_annotated_scan.jpg`;
+          if (!reportData.orig_url) reportData.orig_url = `/output/${taskId}_annotated_original.jpg`;
           renderResult(reportData);
           closeHistoryModal();
           setTimeout(() => {
