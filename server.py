@@ -60,10 +60,14 @@ app.add_middleware(
 
 output_dir = os.path.join(cur_dir, "output")
 static_dir = os.path.join(cur_dir, "static")
+dist_dir = os.path.join(static_dir, "dist")
+dist_assets_dir = os.path.join(dist_dir, "assets")
 docs_dir = os.path.join(cur_dir, "docs")
 os.makedirs(output_dir, exist_ok=True)
 os.makedirs(os.path.join(output_dir, "uploads"), exist_ok=True)
 os.makedirs(static_dir, exist_ok=True)
+os.makedirs(dist_dir, exist_ok=True)
+os.makedirs(dist_assets_dir, exist_ok=True)
 os.makedirs(docs_dir, exist_ok=True)
 
 class OutputStaticFiles(StaticFiles):
@@ -81,17 +85,24 @@ class OutputStaticFiles(StaticFiles):
 
 app.mount("/output", OutputStaticFiles(directory=output_dir), name="output")
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
+app.mount("/assets", StaticFiles(directory=dist_assets_dir), name="assets")
 app.mount("/docs", StaticFiles(directory=docs_dir), name="docs")
 
 
 @app.get("/")
+@app.get("/math")
+@app.get("/omr")
 async def index():
-    """返回移动端 H5 主页面 (设置禁用缓存响应头，确保移动端即时获取最新代码与图文排版)"""
-    html_path = os.path.join(static_dir, "index.html")
-    if not os.path.exists(html_path):
-        return JSONResponse({"message": "Frontend static/index.html not found"})
+    """返回移动端 H5 主页面 (优先返回 Vue3 构建产物 static/dist/index.html，设置禁用缓存响应头)"""
+    dist_html_path = os.path.join(dist_dir, "index.html")
+    legacy_html_path = os.path.join(static_dir, "index.html")
+
+    target_html = dist_html_path if os.path.exists(dist_html_path) else legacy_html_path
+
+    if not os.path.exists(target_html):
+        return JSONResponse({"message": "Frontend index.html not found"})
     return FileResponse(
-        html_path,
+        target_html,
         headers={
             "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0",
             "Pragma": "no-cache",

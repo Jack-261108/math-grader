@@ -29,6 +29,14 @@ fi
 echo "📦 使用 ${PIP_BIN} 同步依赖..."
 "$PIP_BIN" install -r requirements.txt
 
+echo '⚡ 检查并编译前端工程 (Vue 3 + Pinia + Vite)...'
+if [ -d "frontend" ] && command -v npm >/dev/null 2>&1; then
+    cd frontend
+    npm install
+    npm run build
+    cd "$APP_DIR"
+fi
+
 echo '🔄 重启 Supervisor 服务...'
 supervisorctl restart math-grader
 

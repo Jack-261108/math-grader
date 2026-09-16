@@ -1,0 +1,133 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden !important;
+  margin: 0;
+  padding: 0;
+  position: relative;
+}
+
+select {
+  max-width: 100%;
+  text-overflow: ellipsis;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  -webkit-tap-highlight-color: transparent;
+  background-color: #f8fafc;
+}
+
+.safe-top {
+  padding-top: max(env(safe-area-inset-top, 12px), 12px);
+}
+
+.safe-bottom {
+  padding-bottom: max(env(safe-area-inset-bottom, 20px), 16px);
+}
+
+/* 印章效果 */
+.stamp-badge {
+  border: 3.5px solid #dc2626;
+  color: #dc2626;
+  border-radius: 12px;
+  transform: rotate(-6deg);
+  box-shadow: 0 0 0 1.5px #dc2626 inset;
+}
+
+.stamp-badge-blue {
+  border: 3.5px solid #2563eb;
+  color: #2563eb;
+  border-radius: 12px;
+  transform: rotate(-6deg);
+  box-shadow: 0 0 0 1.5px #2563eb inset;
+}
+
+/* 浅色答题卡矩阵滚动条 */
+.matrix-scroll::-webkit-scrollbar {
+  width: 5px;
+}
+.matrix-scroll::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 9999px;
+}
+.matrix-scroll::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+.matrix-scroll::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* A4 纸张排版与打印控制 */
+.a4-sheet {
+  background: white;
+  width: 100%;
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 28px 32px;
+  box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1);
+  border-radius: 12px;
+  color: #1e293b;
+  box-sizing: border-box;
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #printModal, #printSheetContent, #printSheetContent * {
+    visibility: visible;
+  }
+  #printModal {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: auto;
+    background: white !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    z-index: 99999;
+  }
+  #printSheetContent {
+    box-shadow: none !important;
+    border: none !important;
+    padding: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .a4-sheet {
+    box-shadow: none !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
+    max-width: 100% !important;
+  }
+  .print-avoid-break {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  @page {
+    size: A4 portrait;
+    margin: 15mm 12mm;
+  }
+}
