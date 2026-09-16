@@ -15,6 +15,7 @@ import cv2
 import numpy as np
 import qrcode
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -65,7 +66,20 @@ os.makedirs(os.path.join(output_dir, "uploads"), exist_ok=True)
 os.makedirs(static_dir, exist_ok=True)
 os.makedirs(docs_dir, exist_ok=True)
 
-app.mount("/output", StaticFiles(directory=output_dir), name="output")
+class OutputStaticFiles(StaticFiles):
+    """继承 StaticFiles，在静态输出资产 404 缺失时记录业务告警日志，便于可观测性监控与排查"""
+    async def get_response(self, path: str, scope):
+        try:
+            return await super().get_response(path, scope)
+        except (HTTPException, StarletteHTTPException) as ex:
+            if ex.status_code == 404:
+                client = scope.get("client")
+                client_ip = client[0] if client else "unknown"
+                logger.warning(f"[Static-Output] 请求的静态标注资产不存在 (404): path=/output/{path}, client={client_ip}")
+            raise
+
+
+app.mount("/output", OutputStaticFiles(directory=output_dir), name="output")
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
 app.mount("/docs", StaticFiles(directory=docs_dir), name="docs")
 
@@ -250,6 +264,12 @@ async def api_grade(
         summary = result_data.get("summary", {})
         accuracy = summary.get("accuracy", "N/A")
         grade = summary.get("grade", "N/A")
+
+        scan_file = os.path.join(output_dir, f"{task_id}_annotated_scan.jpg")
+        if not os.path.exists(scan_file):
+            logger.error(f"[Math-Grade] 标注图片文件缺失或写入失败: {scan_file}")
+            raise HTTPException(status_code=500, detail="标注图片生成失败，磁盘文件缺失")
+
         logger.info(f"[Math-Grade] 批改完成: task_id={task_id}, 题数={items_count}, 正确率={accuracy}, 等级={grade}, 错题数={len(wrong_items)}, 耗时={elapsed_ms}ms")
 
         return {

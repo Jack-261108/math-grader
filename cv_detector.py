@@ -4,6 +4,9 @@
 
 import cv2
 import numpy as np
+import logging
+
+logger = logging.getLogger("math-grader")
 
 
 def order_points(pts: np.ndarray) -> np.ndarray:
@@ -113,7 +116,82 @@ def detect_table_corners(img: np.ndarray, max_dim: int = 1200) -> np.ndarray:
     safe_corners[:, 0] = np.clip(safe_corners[:, 0], 0, w - 1)
     safe_corners[:, 1] = np.clip(safe_corners[:, 1], 0, h - 1)
 
-    return order_points(safe_corners)
+    ordered = order_points(safe_corners)
+    return orient_table_corners(img, ordered)
+
+
+def orient_table_corners(img: np.ndarray, corners: np.ndarray) -> np.ndarray:
+    """自动判定速算练习册表格的真实物理朝向，并在 4 个角点循环移位中选取最符合正向排版的顶点顺序。
+
+    物理排版不变量：
+    1. 21 个物理行在纵向产生约 52px (在 800x1100 评估图下) 的强烈自相关周期波峰 (横置时仅 ~0.05)；
+    2. 左侧第一列为“序号”列 (窄列)，右侧列为计算列 (宽列)，即 w_left < w_right。
+
+    返回：
+        np.ndarray: 经过朝向纠正后的 4 个角点 [TL, TR, BR, BL] (shape 4x2)
+    """
+    candidates = []
+    for shift in range(4):
+        c_shifted = np.roll(corners, -shift, axis=0)
+        # 采用 800x1100 快速透视变换以进行特征评分
+        dst = np.array([[0, 0], [800, 0], [800, 1100], [0, 1100]], dtype="float32")
+        M = cv2.getPerspectiveTransform(c_shifted.astype("float32"), dst)
+        thumb = cv2.warpPerspective(img, M, (800, 1100))
+        th_h, th_w = thumb.shape[:2]
+
+        gray = cv2.cvtColor(thumb, cv2.COLOR_BGR2GRAY)
+        inv = cv2.bitwise_not(gray)
+        th = cv2.adaptiveThreshold(inv, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 15, -2)
+
+        # 1. 横向线条自相关：检测高度方向上 21 行周期性 (行距约为 1100 / 21 ≈ 52px)
+        hk = cv2.getStructuringElement(cv2.MORPH_RECT, (int(th_w / 25), 1))
+        h_lines = cv2.morphologyEx(th, cv2.MORPH_OPEN, hk)
+        proj_h = np.sum(h_lines[:, int(th_w * 0.45):int(th_w * 0.95)], axis=1).astype(float)
+        smooth_h = np.convolve(proj_h, np.ones(5) / 5, mode="same")
+        norm_h = smooth_h - np.mean(smooth_h)
+        autocorr = np.correlate(norm_h, norm_h, mode="full")[len(norm_h) - 1:]
+
+        peak_val = 0.0
+        if autocorr[0] > 0:
+            peak_val = float(np.max(autocorr[40:65])) / float(autocorr[0])
+
+        # 2. 竖向线条聚类：检测左列与右列宽度
+        vk = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 40))
+        v_lines = cv2.morphologyEx(th, cv2.MORPH_OPEN, vk)
+        proj_v = np.sum(v_lines[int(th_h * 0.3):int(th_h * 0.8), :], axis=0).astype(float)
+        smooth_v = np.convolve(proj_v, np.ones(7) / 7, mode="same")
+
+        peaks = []
+        if np.max(smooth_v) > 0:
+            peaks = [
+                x for x in range(th_w)
+                if smooth_v[x] > np.max(smooth_v) * 0.25 and smooth_v[x] == np.max(smooth_v[max(0, x - 10):min(th_w, x + 11)])
+            ]
+        g_peaks = []
+        for p in peaks:
+            if not g_peaks or p - g_peaks[-1] > 10:
+                g_peaks.append(p)
+            else:
+                g_peaks[-1] = (g_peaks[-1] + p) // 2
+
+        col_ratio_score = 0.0
+        if len(g_peaks) >= 3:
+            w_left = g_peaks[1] - g_peaks[0]
+            w_right = g_peaks[-1] - g_peaks[-2]
+            if w_left < w_right:
+                col_ratio_score = (w_right - w_left) / (w_left + 1e-5)
+            else:
+                col_ratio_score = -((w_left - w_right) / (w_right + 1e-5))
+
+        total_score = peak_val * 10.0 + col_ratio_score * 2.0
+        candidates.append((shift, total_score))
+
+    candidates.sort(key=lambda x: x[1], reverse=True)
+    best_shift = candidates[0][0]
+    best_score = candidates[0][1]
+    rot_desc = {0: "正向 (0°)", 1: "顺时针90°", 2: "上下颠倒 (180°)", 3: "逆时针90°"}.get(best_shift, f"移位{best_shift}")
+    logger.info(f"[Table-Detect] 表格物理朝向判定完成: 识别为 {rot_desc}, 综合评分={best_score:.2f}, shift={best_shift}")
+    return np.roll(corners, -best_shift, axis=0)
 
 
 def warp_table(img: np.ndarray, corners: np.ndarray, target_w: int = 1600, target_h: int = 2200):
@@ -250,6 +328,7 @@ def detect_grid_cells(warped_img: np.ndarray, total_rows: int = 21, total_cols: 
         col_cuts[-1] = w
         col_bounds = [(int(col_cuts[j]), int(col_cuts[j + 1])) for j in range(len(col_cuts) - 1)]
 
+    logger.info(f"[Grid-Detect] 网格分割完成: 物理行距={spacing}px, 检测有效行={len(row_bounds)}, 有效列={len(col_bounds)}")
     return row_bounds, col_bounds
 
 

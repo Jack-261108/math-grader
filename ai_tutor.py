@@ -8,9 +8,12 @@ import os
 import sys
 import re
 import json
+import logging
 import urllib.request
 from urllib.error import HTTPError
 from typing import Dict, Any, Optional
+
+logger = logging.getLogger("math-grader")
 
 cur_dir = os.path.dirname(os.path.abspath(__file__))
 if cur_dir not in sys.path:
@@ -269,7 +272,6 @@ def explain_mistake(
                 err_body = he.read().decode('utf-8', errors='ignore')
             except Exception:
                 pass
-            print(f"[AI Tutor HTTPError] URL: {url}, Model: {cand_model}, Code: {he.code}, Reason: {he.reason}, Body: {err_body[:400]}")
             msg = f"HTTP {he.code} ({he.reason})"
             if err_body:
                 try:
@@ -284,10 +286,11 @@ def explain_mistake(
                         msg += f": {err_body[:200]}"
                 except Exception:
                     msg += f": {err_body[:200]}"
+            logger.warning(f"[AI-Tutor] 模型 {cand_model} 响应异常 (HTTP {he.code}): reason={he.reason}, detail={msg}")
             last_err = msg
             continue
         except Exception as e:
-            print(f"[AI Tutor Error] URL: {url}, Model: {cand_model}, Error: {str(e)}")
+            logger.warning(f"[AI-Tutor] 模型 {cand_model} 调用异常: error={str(e)}")
             last_err = e
             continue
 

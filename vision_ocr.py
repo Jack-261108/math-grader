@@ -4,13 +4,17 @@
 """
 
 import os
+import time
 import json
 import base64
+import logging
 import urllib.request
 from urllib.error import HTTPError
 from typing import Dict, Any, Optional
 import cv2
 import numpy as np
+
+logger = logging.getLogger("math-grader")
 
 
 def _load_dotenv():
@@ -165,7 +169,9 @@ def recognize_sheet_table(
     }
 
     last_err = None
+    logger.info(f"[Vision-OCR] 发起多模态识别: 目标接口={url[:45]}, 候选模型列表={candidate_models}")
     for cand_model in candidate_models:
+        t0 = time.time()
         try:
             payload = {
                 "model": cand_model,
@@ -214,19 +220,25 @@ def recognize_sheet_table(
 
             try:
                 data = json.loads(json_str)
-                return data
             except Exception:
                 start = text_content.find("{")
                 end = text_content.rfind("}")
                 if start != -1 and end != -1:
-                    return json.loads(text_content[start:end+1])
+                    data = json.loads(text_content[start:end+1])
+                else:
+                    raise
+
+            elapsed_ms = int((time.time() - t0) * 1000)
+            items_cnt = len(data.get("items", []))
+            sheet_title = data.get("sheet_title", "")
+            logger.info(f"[Vision-OCR] 模型 {cand_model} 识别成功: 题数={items_cnt}, 卷名=《{sheet_title}》, 耗时={elapsed_ms}ms")
+            return data
         except HTTPError as he:
             err_body = ""
             try:
                 err_body = he.read().decode('utf-8', errors='ignore')
             except Exception:
                 pass
-            print(f"[Vision OCR HTTPError] URL: {url}, Model: {cand_model}, Code: {he.code}, Reason: {he.reason}, Body: {err_body[:400]}")
             msg = f"HTTP {he.code} ({he.reason})"
             if err_body:
                 try:
@@ -241,11 +253,13 @@ def recognize_sheet_table(
                         msg += f": {err_body[:200]}"
                 except Exception:
                     msg += f": {err_body[:200]}"
+            logger.warning(f"[Vision-OCR] 模型 {cand_model} 请求异常 (HTTP {he.code}): reason={he.reason}, detail={msg}")
             last_err = msg
             continue
         except Exception as e:
-            print(f"[Vision OCR Error] URL: {url}, Model: {cand_model}, Error: {str(e)}")
+            logger.warning(f"[Vision-OCR] 模型 {cand_model} 调用异常: error={str(e)}")
             last_err = e
             continue
 
+    logger.error(f"[Vision-OCR] 所有候选模型均调用失败: last_err={last_err}")
     raise ValueError(f"视觉识别失败，最后报错: {last_err}")

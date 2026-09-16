@@ -322,8 +322,16 @@
           </div>
 
           <!-- 标注图显示容器 -->
-          <div class="relative rounded-xl overflow-hidden bg-slate-900 border border-slate-200 group">
+          <div class="relative rounded-xl overflow-hidden bg-slate-900 border border-slate-200 group min-h-[140px] flex items-center justify-center">
             <img id="resultImage" src="" alt="批改标注结果" class="w-full h-auto object-contain cursor-zoom-in active:scale-95 transition" onclick="openFullscreen(this.src)">
+            <div id="imageLoadPlaceholder" class="hidden absolute inset-0 bg-slate-900/95 flex flex-col items-center justify-center text-slate-300 p-4 text-center z-10">
+              <i class="fa-solid fa-triangle-exclamation text-amber-400 text-2xl mb-2"></i>
+              <p class="text-xs font-medium text-slate-200 mb-1">图片加载未就绪或网络稍有延迟</p>
+              <p class="text-[11px] text-slate-400 mb-3">批改已完成，点击下方按钮可重新拉取大图</p>
+              <button type="button" onclick="retryResultImage()" class="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg shadow-sm transition flex items-center">
+                <i class="fa-solid fa-rotate-right mr-1.5"></i> 刷新加载标注图
+              </button>
+            </div>
             <div class="absolute bottom-2 right-2 bg-black/60 text-white px-2 py-1 rounded-md text-[10px] backdrop-blur-xs pointer-events-none">
               <i class="fa-solid fa-magnifying-glass-plus mr-1"></i> 点击查看大图
             </div>
@@ -1505,9 +1513,45 @@
       window.scrollTo({ top: 0, behavior: 'smooth' });
     });
 
+    resultImage.onerror = function() {
+      const retryCount = parseInt(this.dataset.retried || "0", 10);
+      const isScan = tabScan.classList.contains('font-bold');
+      const targetUrl = isScan ? currentScanUrl : currentOrigUrl;
+      if (!targetUrl) return;
+      if (retryCount < 2) {
+        this.dataset.retried = String(retryCount + 1);
+        setTimeout(() => {
+          this.src = targetUrl + (targetUrl.includes('?') ? '&' : '?') + '_t=' + Date.now();
+        }, 800 * (retryCount + 1));
+      } else {
+        const placeholder = document.getElementById('imageLoadPlaceholder');
+        if (placeholder) placeholder.classList.remove('hidden');
+      }
+    };
+
+    resultImage.onload = function() {
+      this.dataset.retried = "0";
+      const placeholder = document.getElementById('imageLoadPlaceholder');
+      if (placeholder) placeholder.classList.add('hidden');
+    };
+
+    window.retryResultImage = function() {
+      const placeholder = document.getElementById('imageLoadPlaceholder');
+      if (placeholder) placeholder.classList.add('hidden');
+      resultImage.dataset.retried = "0";
+      const isScan = tabScan.classList.contains('font-bold');
+      const targetUrl = isScan ? currentScanUrl : currentOrigUrl;
+      if (targetUrl) {
+        resultImage.src = targetUrl + (targetUrl.includes('?') ? '&' : '?') + '_t=' + Date.now();
+      }
+    };
+
     tabScan.addEventListener('click', () => {
       tabScan.className = "flex-1 py-1.5 rounded-lg bg-white shadow-xs text-slate-800 transition font-bold";
       tabOrig.className = "flex-1 py-1.5 rounded-lg text-slate-500 hover:text-slate-800 transition";
+      const placeholder = document.getElementById('imageLoadPlaceholder');
+      if (placeholder) placeholder.classList.add('hidden');
+      resultImage.dataset.retried = "0";
       resultImage.src = currentScanUrl;
       btnDownload.href = currentScanUrl;
     });
@@ -1515,6 +1559,9 @@
     tabOrig.addEventListener('click', () => {
       tabOrig.className = "flex-1 py-1.5 rounded-lg bg-white shadow-xs text-slate-800 transition font-bold";
       tabScan.className = "flex-1 py-1.5 rounded-lg text-slate-500 hover:text-slate-800 transition";
+      const placeholder = document.getElementById('imageLoadPlaceholder');
+      if (placeholder) placeholder.classList.add('hidden');
+      resultImage.dataset.retried = "0";
       resultImage.src = currentOrigUrl;
       btnDownload.href = currentOrigUrl;
     });
@@ -1614,6 +1661,9 @@
       currentScanUrl = data.scan_url;
       currentOrigUrl = data.orig_url;
 
+      const placeholder = document.getElementById('imageLoadPlaceholder');
+      if (placeholder) placeholder.classList.add('hidden');
+      resultImage.dataset.retried = "0";
       resultImage.src = currentScanUrl;
       btnDownload.href = currentScanUrl;
 

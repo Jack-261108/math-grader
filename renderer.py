@@ -3,10 +3,13 @@
 """
 
 import os
+import logging
 from typing import Dict, Any, List, Tuple, Optional
 import cv2
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
+
+logger = logging.getLogger("math-grader")
 
 
 def get_available_chinese_font(size: int = 24):
@@ -41,6 +44,7 @@ def get_available_chinese_font(size: int = 24):
             return ImageFont.truetype(name, size)
         except Exception:
             pass
+    logger.warning("[Renderer] 未检测到系统可用中文字体，降级为默认字体，汉字批注可能显示为豆腐块！")
     return ImageFont.load_default()
 
 
@@ -99,6 +103,7 @@ def render_on_warped_sheet(
     h, w = warped_bgr.shape[:2]
     # 底部扩展 320 像素作为页脚区域，放置备注和统计结果卡片，避免遮挡最后三行题目
     footer_h = 320
+    logger.info(f"[Renderer] 生成展平标注图: 题目数={len(items)}, 题型={sheet_type}, 尺寸={w}x{h+footer_h}")
     padded_bgr = cv2.copyMakeBorder(warped_bgr, 0, footer_h, 0, 0, cv2.BORDER_CONSTANT, value=(255, 255, 255))
 
     img_rgb = cv2.cvtColor(padded_bgr, cv2.COLOR_BGR2RGB)
@@ -193,6 +198,7 @@ def render_on_original_sheet(
         标注完成的 BGR 图像
     """
     orig_h, orig_w = orig_bgr.shape[:2]
+    logger.info(f"[Renderer] 生成原图透视贴合标注图: 题目数={len(items)}, 原图尺寸={orig_w}x{orig_h}")
 
     # 1. 在标准化展平坐标系 (1600x2200) 下创建透明 RGBA 标注图层
     w, h = 1600, 2200

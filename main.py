@@ -7,7 +7,8 @@ import os
 import sys
 import argparse
 import json
-from typing import Optional, Dict, Any
+import logging
+from typing import Optional
 import cv2
 import numpy as np
 
@@ -15,6 +16,17 @@ import numpy as np
 cur_dir = os.path.dirname(os.path.abspath(__file__))
 if cur_dir not in sys.path:
     sys.path.insert(0, cur_dir)
+
+# 初始化统一的 math-grader Logger
+logger = logging.getLogger("math-grader")
+if not logger.handlers:
+    _handler = logging.StreamHandler(sys.stdout)
+    _handler.setFormatter(logging.Formatter(
+        fmt="%(asctime)s [%(levelname)s] %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S"
+    ))
+    logger.addHandler(_handler)
+    logger.setLevel(logging.INFO)
 
 import cv_detector
 import vision_ocr
@@ -32,18 +44,19 @@ def process_sheet(
     api_key: Optional[str] = None
 ) -> dict:
     """处理单张试卷的完整批改流水线并返回结构化数据与图片路径"""
+    output_dir = os.path.abspath(output_dir)
     os.makedirs(output_dir, exist_ok=True)
     h, w = orig_img.shape[:2]
-    print(f"[1/5] 原始图片加载完成 (尺寸: {w}x{h})")
+    logger.info(f"[Math-Pipeline] [1/5] 原始图片加载完成: 尺寸={w}x{h}")
 
     # 2. 表格角点检测与透视校正
     corners = cv_detector.detect_table_corners(orig_img)
     warped_img, _M, M_inv = cv_detector.warp_table(orig_img, corners, target_w=1600, target_h=2200)
     row_bounds, col_bounds = cv_detector.detect_grid_cells(warped_img, total_rows=21, total_cols=11)
-    print(f"[2/5] 表格透视矫正与网格分割完成 (检测到 {len(row_bounds)} 行, {len(col_bounds)} 列)")
+    logger.info(f"[Math-Pipeline] [2/5] 表格透视矫正与网格分割完成: 检测到 {len(row_bounds)} 行, {len(col_bounds)} 列")
 
     # 3. 视觉模型识别题目与学生作答
-    print(f"[3/5] 正在调用多模态视觉模型提取题目与手写答案...")
+    logger.info(f"[Math-Pipeline] [3/5] 正在调用多模态视觉模型提取题目与手写答案...")
     ocr_res = vision_ocr.recognize_sheet_table(
         warped_img,
         model=model,
@@ -52,10 +65,10 @@ def process_sheet(
     )
     sheet_title = ocr_res.get("sheet_title", "速算练习")
     items_raw = ocr_res.get("items", [])
-    print(f"      识别到卷面标题: 《{sheet_title}》, 题目数量: {len(items_raw)}")
+    logger.info(f"[Math-Pipeline] [3/5] 视觉提取成功: 卷名=《{sheet_title}》, 题目数量={len(items_raw)}")
 
     # 4. 精确数学核算与成绩评定
-    print(f"[4/5] 正在执行精准数学规则核算与判分...")
+    logger.info(f"[Math-Pipeline] [4/5] 正在执行精准数学规则核算与判分...")
     judged_items = []
     for item in items_raw:
         res = math_judge.judge_item(
@@ -67,21 +80,28 @@ def process_sheet(
         judged_items.append({**item, **res})
 
     report = math_judge.grade_sheet(judged_items, custom_time_str=time_str)
+    logger.info(f"[Math-Pipeline] [4/5] 数学规则判题完成: 正确={report['correct']}, 错误={report['wrong']}, 待确认={report['unknown']}, 正确率={report['accuracy_pct']}%")
 
     # 5. 高保真渲染与导出
-    print(f"[5/5] 正在生成标注图层 (原图标注与展平图标注)...")
+    logger.info(f"[Math-Pipeline] [5/5] 正在生成标注图层 (原图标注与展平图标注)...")
     detected_type = ocr_res.get("detected_type", "mul_add_sub")
     scan_annotated = renderer.render_on_warped_sheet(
         warped_img, row_bounds, col_bounds, judged_items, report, sheet_type=detected_type
     )
     scan_path = os.path.join(output_dir, f"{base_name}_annotated_scan.jpg")
-    cv2.imwrite(scan_path, scan_annotated)
+    scan_ok = cv2.imwrite(scan_path, scan_annotated)
+    if not scan_ok or not os.path.exists(scan_path):
+        raise IOError(f"保存扫描展平标注图失败，磁盘写入未成功: {scan_path}")
 
     orig_annotated = renderer.render_on_original_sheet(
         orig_img, M_inv, row_bounds, col_bounds, judged_items, report, corners=corners
     )
     orig_path = os.path.join(output_dir, f"{base_name}_annotated_original.jpg")
-    cv2.imwrite(orig_path, orig_annotated)
+    orig_ok = cv2.imwrite(orig_path, orig_annotated)
+    if not orig_ok or not os.path.exists(orig_path):
+        raise IOError(f"保存拍照原图标注图失败，磁盘写入未成功: {orig_path}")
+
+    logger.info(f"[Math-Pipeline] [5/5] 标注大图生成与落盘完成: 展平图={scan_path}, 原图={orig_path}")
 
     # 保存 JSON 结果明细
     json_path = os.path.join(output_dir, f"{base_name}_report.json")
