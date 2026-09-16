@@ -262,15 +262,15 @@ async def api_grade(
         elapsed_ms = int((time.time() - t_start) * 1000)
         items_count = len(result_data.get("items", []))
         summary = result_data.get("summary", {})
-        accuracy = summary.get("accuracy", "N/A")
-        grade = summary.get("grade", "N/A")
+        accuracy = summary.get("accuracy_pct", summary.get("accuracy", "N/A"))
+        grade = summary.get("grade_level", summary.get("grade", "N/A"))
 
         scan_file = os.path.join(output_dir, f"{task_id}_annotated_scan.jpg")
         if not os.path.exists(scan_file):
             logger.error(f"[Math-Grade] 标注图片文件缺失或写入失败: {scan_file}")
             raise HTTPException(status_code=500, detail="标注图片生成失败，磁盘文件缺失")
 
-        logger.info(f"[Math-Grade] 批改完成: task_id={task_id}, 题数={items_count}, 正确率={accuracy}, 等级={grade}, 错题数={len(wrong_items)}, 耗时={elapsed_ms}ms")
+        logger.info(f"[Math-Grade] 批改完成: task_id={task_id}, 题数={items_count}, 正确率={accuracy}%, 等级={grade}, 错题数={len(wrong_items)}, 耗时={elapsed_ms}ms")
 
         return {
             "status": "success",
