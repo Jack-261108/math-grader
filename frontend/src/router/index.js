@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import MathView from '../views/MathView.vue';
 import OmrView from '../views/OmrView.vue';
+import WrongBookView from '../views/WrongBookView.vue';
 
 const routes = [
   {
@@ -17,6 +18,11 @@ const routes = [
     path: '/omr',
     name: 'Omr',
     component: OmrView
+  },
+  {
+    path: '/wrong-book',
+    name: 'WrongBook',
+    component: WrongBookView
   }
 ];
 

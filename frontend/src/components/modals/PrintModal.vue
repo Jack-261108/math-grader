@@ -73,8 +73,90 @@
         </div>
       </div>
 
+      <!-- 针对性弱项重练组卷排版 (当 modalStore.printSource === 'wrong_sheet') -->
+      <div v-if="isWrongSheet">
+        <div v-if="wrongSheetItems.length === 0" class="text-center py-12 text-slate-400 font-bold text-base">
+          请先在错题知识库生成一份专项提分卷后再进行打印排版。
+        </div>
+
+        <!-- 针对性弱项空白重做卷 -->
+        <div v-else-if="printView === 'clean'" class="space-y-4">
+          <div
+            v-for="(it, idx) in wrongSheetItems"
+            :key="it.db_question_id || idx"
+            class="print-avoid-break p-3.5 border-2 border-slate-300 rounded-xl bg-white space-y-2"
+          >
+            <div class="flex items-center justify-between border-b border-slate-200 pb-1.5">
+              <div class="flex items-center space-x-2">
+                <span class="w-6 h-6 rounded-full bg-purple-700 text-white font-black text-xs flex items-center justify-center font-mono">
+                  {{ idx + 1 }}
+                </span>
+                <span class="font-bold text-xs text-slate-800">{{ it.topic_category }}</span>
+                <span class="text-[10px] text-slate-400">({{ it.module_name }})</span>
+              </div>
+              <span class="text-[10px] font-bold text-slate-400">分值: {{ it.score_per_q || 1.0 }}分</span>
+            </div>
+
+            <!-- 速算题算式 -->
+            <div v-if="it.expression" class="py-2">
+              <div class="text-lg font-extrabold text-slate-900 tracking-wide font-mono">
+                {{ it.expression }} = <span class="inline-block border-2 border-slate-800 w-28 h-7 align-middle ml-1 rounded"></span>
+              </div>
+              <div class="h-12 border border-dashed border-slate-200 rounded p-1.5 text-[9px] text-slate-300 mt-2">
+                草稿速算演算区:
+              </div>
+            </div>
+
+            <!-- 行测题选择题 -->
+            <div v-else class="space-y-2">
+              <div v-if="it.material" class="bg-slate-50 border-l-2 border-slate-400 p-2 text-[10px] text-slate-600 leading-relaxed mb-1.5" v-html="renderStructuredMaterialHtml(it.material)"></div>
+              <div class="text-xs font-bold text-slate-900 leading-relaxed whitespace-pre-wrap">{{ it.stem }}</div>
+              <div v-if="it.options && Object.keys(it.options).length > 0" class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-slate-800 pt-1 font-serif">
+                <div v-for="(v, k) in it.options" :key="k">
+                  <b>{{ k }}.</b> {{ v }}
+                </div>
+              </div>
+              <div class="h-10 border border-dashed border-slate-200 rounded p-1 text-[9px] text-slate-300">
+                草稿与代入排除标记区:
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 针对性弱项复盘解析版 -->
+        <div v-else class="space-y-3.5">
+          <div
+            v-for="(it, idx) in wrongSheetItems"
+            :key="it.db_question_id || idx"
+            class="print-avoid-break p-3.5 border border-slate-300 rounded-xl bg-slate-50/80 space-y-2"
+          >
+            <div class="flex items-center justify-between border-b border-slate-200 pb-1.5">
+              <div class="flex items-center space-x-2">
+                <span class="px-2 py-0.5 rounded bg-purple-700 text-white font-bold text-xs">#{{ idx + 1 }}</span>
+                <span class="font-bold text-sm text-slate-800">{{ it.topic_category }}</span>
+              </div>
+              <div class="text-xs">
+                <span class="text-slate-400 line-through mr-2">上次作答: {{ it.user_last_answer || '未填' }}</span>
+                <span class="text-emerald-700 font-black text-sm">标准答案: {{ it.expected_answer }}</span>
+              </div>
+            </div>
+
+            <div class="bg-white p-2.5 rounded-lg border border-slate-200 space-y-1.5 text-xs text-slate-800">
+              <div v-if="it.expression" class="font-mono font-bold text-base">{{ it.expression }} = {{ it.expected_answer }}</div>
+              <div v-else class="font-bold">{{ it.stem }}</div>
+              <div v-if="it.advice" class="text-[11px] text-purple-900 bg-purple-50 p-2 rounded leading-relaxed">
+                <b class="text-purple-700">【名师秒杀解题要诀】：</b>{{ it.advice }}
+              </div>
+              <div v-if="it.diagnosis" class="text-[11px] text-slate-500">
+                <b>【典型错因诊断】：</b>{{ it.diagnosis }}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- 速算错题排版 -->
-      <div v-if="isMath">
+      <div v-else-if="isMath">
         <div v-if="mathWrongItems.length === 0" class="text-center py-12 text-emerald-600 font-bold text-base">
           🎉 恭喜！本次速算全对无任何错题，无需重做！
         </div>
@@ -236,14 +318,17 @@ import { ref, computed } from 'vue';
 import { useModalStore } from '../../stores/modal';
 import { useMathStore } from '../../stores/math';
 import { useOmrStore } from '../../stores/omr';
+import { useWrongBookStore } from '../../stores/wrongbook';
 import { renderStructuredMaterialHtml } from '../../utils/materialFormatter';
 
 const modalStore = useModalStore();
 const mathStore = useMathStore();
 const omrStore = useOmrStore();
+const wrongBookStore = useWrongBookStore();
 
 const printView = ref('clean'); // 'clean' | 'review'
 
+const isWrongSheet = computed(() => modalStore.printSource === 'wrong_sheet');
 const isMath = computed(() => modalStore.printSource === 'math');
 
 const todayStr = computed(() => {
@@ -251,6 +336,9 @@ const todayStr = computed(() => {
 });
 
 const examName = computed(() => {
+  if (isWrongSheet.value) {
+    return wrongBookStore.generatedSheet?.title || '针对性薄弱考点自测提分卷';
+  }
   if (isMath.value) {
     return mathStore.resultData?.title || '公考资料分析速算';
   }
@@ -265,6 +353,10 @@ const summaryTips = computed(() => {
   return printView.value === 'clean'
     ? '说明：请在规定时间内独立重做下列错题，养成良好心算与书写习惯，做完后可对照原卷复盘。'
     : '说明：每道错题已标注您的原错误答案与命题正解，附带错因分析与秒杀点拨，建议考前精细研读。';
+});
+
+const wrongSheetItems = computed(() => {
+  return wrongBookStore.generatedSheet?.items || [];
 });
 
 const mathWrongItems = computed(() => {
