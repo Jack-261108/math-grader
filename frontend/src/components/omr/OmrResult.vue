@@ -107,7 +107,17 @@
           : 'flex-1 py-2 px-2.5 rounded-xl font-semibold transition flex items-center justify-center space-x-1.5 text-slate-600 hover:text-slate-900 hover:bg-slate-100 cursor-pointer'"
       >
         <i class="fa-solid fa-chart-pie text-xs"></i>
-        <span>成绩与学情诊断</span>
+        <span>成绩与学情</span>
+      </button>
+      <button
+        type="button"
+        @click="omrStore.currentResultTab = 'timing'"
+        :class="omrStore.currentResultTab === 'timing'
+          ? 'flex-1 py-2 px-2.5 rounded-xl font-bold transition flex items-center justify-center space-x-1.5 bg-blue-600 text-white shadow-xs cursor-pointer'
+          : 'flex-1 py-2 px-2.5 rounded-xl font-semibold transition flex items-center justify-center space-x-1.5 text-slate-600 hover:text-slate-900 hover:bg-slate-100 cursor-pointer'"
+      >
+        <i class="fa-solid fa-stopwatch text-xs text-amber-400"></i>
+        <span>模考配速与象限</span>
       </button>
       <button
         type="button"
@@ -116,8 +126,8 @@
           ? 'flex-1 py-2 px-2.5 rounded-xl font-bold transition flex items-center justify-center space-x-1.5 bg-blue-600 text-white shadow-xs cursor-pointer'
           : 'flex-1 py-2 px-2.5 rounded-xl font-semibold transition flex items-center justify-center space-x-1.5 text-slate-600 hover:text-slate-900 hover:bg-slate-100 cursor-pointer'"
       >
-        <i class="fa-solid fa-id-card text-xs text-blue-500"></i>
-        <span>电子答题卡与批注</span>
+        <i class="fa-solid fa-id-card text-xs text-blue-400"></i>
+        <span>答题卡批注</span>
       </button>
     </div>
 
@@ -208,7 +218,12 @@
       </div>
     </div>
 
-    <!-- Tab 2: 【📋 卷面与答题卡】 -->
+    <!-- Tab 2: 【⏱️ 模考配速与性价比四象限诊断】 -->
+    <div v-show="omrStore.currentResultTab === 'timing'" class="space-y-4">
+      <OmrTimingAnalysis />
+    </div>
+
+    <!-- Tab 3: 【📋 卷面与答题卡】 -->
     <div v-show="omrStore.currentResultTab === 'card'" class="space-y-4">
       <!-- 批注答题卡全景图 -->
       <div v-if="omrStore.resultData.card_url" class="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm space-y-3">
@@ -285,6 +300,7 @@ import { useModalStore } from '../../stores/modal';
 import { useRouter } from 'vue-router';
 import OmrMatrixCard from './OmrMatrixCard.vue';
 import OmrCorrectionDrawer from './OmrCorrectionDrawer.vue';
+import OmrTimingAnalysis from './OmrTimingAnalysis.vue';
 
 const omrStore = useOmrStore();
 const modalStore = useModalStore();

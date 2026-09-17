@@ -316,11 +316,327 @@ def get_section_for_question(q_num: int, sections: List[Dict[str, Any]]) -> Opti
     return None
 
 
+# ============================================================
+# 行测实战做题节奏基准与全真模考性价比四象限分析引擎
+# ============================================================
+
+SECTION_TIMING_BENCHMARK: Dict[str, Dict[str, Any]] = {
+    "politics": {"name": "政治理论", "per_q_sec": 30, "target_min": 8},
+    "common_sense": {"name": "常识判断", "per_q_sec": 30, "target_min": 10},
+    "verbal": {"name": "言语理解与表达", "per_q_sec": 48, "target_min": 32},
+    "quantity": {"name": "数量关系", "per_q_sec": 60, "target_min": 15},
+    "reasoning": {"name": "判断推理", "per_q_sec": 48, "target_min": 32},
+    "data_analysis": {"name": "资料分析", "per_q_sec": 75, "target_min": 25},
+}
+
+
+def get_section_benchmark_per_q(sec_id: str, sec_name: str) -> float:
+    """根据模块标识或名称获取公考实战建议单题耗时（秒）"""
+    if sec_id in SECTION_TIMING_BENCHMARK:
+        return float(SECTION_TIMING_BENCHMARK[sec_id]["per_q_sec"])
+    name = sec_name or ""
+    if "资料" in name:
+        return 75.0
+    if "数量" in name:
+        return 60.0
+    if "言语" in name:
+        return 48.0
+    if "判断" in name:
+        return 48.0
+    if "常识" in name or "政治" in name:
+        return 30.0
+    return 50.0
+
+
+def parse_time_str_to_seconds(time_str: str) -> int:
+    """解析中文时间或标准时分秒字符串为秒数"""
+    if not time_str:
+        return 0
+    s_val = str(time_str).strip()
+    m_match = re.search(r'(\d+)\s*分', s_val)
+    sec_match = re.search(r'(\d+)\s*秒', s_val)
+    h_match = re.search(r'(\d+)\s*(?:小时|时)', s_val)
+    if m_match or sec_match or h_match:
+        tot = 0
+        if h_match:
+            tot += int(h_match.group(1)) * 3600
+        if m_match:
+            tot += int(m_match.group(1)) * 60
+        if sec_match:
+            tot += int(sec_match.group(1))
+        return tot
+
+    if ":" in s_val:
+        parts = s_val.split(":")
+        try:
+            if len(parts) == 3:
+                return int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
+            elif len(parts) == 2:
+                return int(parts[0]) * 60 + int(parts[1])
+        except Exception:
+            pass
+
+    try:
+        return int(float(s_val))
+    except Exception:
+        return 0
+
+
+def format_seconds_to_chinese_time(seconds: int) -> str:
+    """将秒数格式化为中文字符串"""
+    if seconds <= 0:
+        return "0秒"
+    m, s = divmod(seconds, 60)
+    h, m = divmod(m, 60)
+    if h > 0:
+        return f"{h}小时{m:02d}分{s:02d}秒"
+    elif m > 0:
+        return f"{m}分{s:02d}秒"
+    else:
+        return f"{s}秒"
+
+
+def analyze_exam_timing(
+    judged_items: List[Dict[str, Any]],
+    section_results: List[Dict[str, Any]],
+    time_data: Optional[Dict[str, Any]] = None,
+    custom_time_str: str = "25分00秒"
+) -> Dict[str, Any]:
+    """计算行测全真模考用时与得分四象限性价比诊断报告。
+
+    象限划分准则：
+        🟢 高效核心区 (high_efficiency): 耗时 <= 模块建议阈值 且 作答正确
+        🔴 高危陷阱区 (time_sink): 耗时 > 模块建议阈值 且 作答做错 (实战必须果断止损跳过)
+        🟡 可惜消耗区 (costly_win): 耗时 > 模块建议阈值 但 作答正确 (需强化秒杀技巧提速)
+        ⚪ 急躁盲区 (fast_loss): 耗时 <= 模块建议阈值 且 作答做错 (细心审题防掉坑)
+    """
+    total_q_count = len(judged_items)
+    raw_q_times: Dict[str, Any] = (time_data or {}).get("question_times", {})
+    has_granular_timing = bool(raw_q_times and any(float(v) > 0 for v in raw_q_times.values()))
+
+    # 解析全卷总耗时
+    total_elapsed = 0
+    if time_data and "total_elapsed_seconds" in time_data:
+        try:
+            total_elapsed = int(time_data["total_elapsed_seconds"])
+        except Exception:
+            total_elapsed = 0
+    if total_elapsed <= 0:
+        total_elapsed = parse_time_str_to_seconds(custom_time_str)
+    if total_elapsed <= 0:
+        total_elapsed = total_q_count * 52
+
+    # 计算各题基准耗时总和与缩放系数
+    base_benchmark_sum = 0.0
+    for item in judged_items:
+        sec_id = item.get("section_id", "")
+        sec_name = item.get("section_name", "")
+        base_benchmark_sum += get_section_benchmark_per_q(sec_id, sec_name)
+    scale_factor = (total_elapsed / base_benchmark_sum) if base_benchmark_sum > 0 else 1.0
+
+    timing_items = []
+    quadrant_buckets: Dict[str, Dict[str, Any]] = {
+        "high_efficiency": {
+            "id": "high_efficiency",
+            "name": "高效核心区",
+            "badge_color": "emerald",
+            "desc": "耗时短且作答正确 · 实战核心拿分阵地",
+            "count": 0,
+            "q_nums": [],
+            "score_amount": 0.0,
+            "advice": "答题节奏与第一直觉保持优秀，考场中此类题目能快速奠定基本盘。"
+        },
+        "time_sink": {
+            "id": "time_sink",
+            "name": "高危陷阱区",
+            "badge_color": "rose",
+            "desc": "耗时长且依然做错 · 吞噬时间与分数的元凶",
+            "count": 0,
+            "q_nums": [],
+            "score_amount": 0.0,
+            "advice": "行测头号大忌！超过 70-80 秒无清晰思路必须坚决止损，果断排除蒙题。"
+        },
+        "costly_win": {
+            "id": "costly_win",
+            "name": "可惜消耗区",
+            "badge_color": "amber",
+            "desc": "耗时长但作答正确 · 高时间成本得分",
+            "count": 0,
+            "q_nums": [],
+            "score_amount": 0.0,
+            "advice": "虽得分但拖垮全卷总节奏，需重点强化凑整速算与选项代入等秒杀破局法。"
+        },
+        "fast_loss": {
+            "id": "fast_loss",
+            "name": "急躁盲区",
+            "badge_color": "slate",
+            "desc": "耗时短但作答做错 · 粗心失误或秒蒙题",
+            "count": 0,
+            "q_nums": [],
+            "score_amount": 0.0,
+            "advice": "多因审题不细或掉入偷换概念陷阱，考前复盘切忌‘会做却看错’。"
+        }
+    }
+
+    for item in judged_items:
+        q_num = item["q_num"]
+        sec_id = item.get("section_id", "")
+        sec_name = item.get("section_name", "")
+        score_per_q = float(item.get("score_per_q", 1.0))
+        earned_score = float(item.get("earned_score", 0.0))
+        is_correct = bool(item.get("is_correct"))
+
+        base_bench = get_section_benchmark_per_q(sec_id, sec_name)
+
+        if has_granular_timing:
+            raw_t = raw_q_times.get(str(q_num), raw_q_times.get(q_num, 0))
+            try:
+                t_spent = max(1.0, min(600.0, float(raw_t)))
+            except Exception:
+                t_spent = max(1.0, round(base_bench * scale_factor, 1))
+        else:
+            # 依据模块权重自适应拟合分配
+            t_spent = max(1.0, round(base_bench * scale_factor, 1))
+
+        threshold = base_bench
+
+        if t_spent <= threshold:
+            quad_key = "high_efficiency" if is_correct else "fast_loss"
+        else:
+            quad_key = "costly_win" if is_correct else "time_sink"
+
+        b = quadrant_buckets[quad_key]
+        b["count"] += 1
+        b["q_nums"].append(q_num)
+        if is_correct:
+            b["score_amount"] = round(b["score_amount"] + earned_score, 2)
+        else:
+            b["score_amount"] = round(b["score_amount"] + score_per_q, 2)
+
+        timing_items.append({
+            "q_num": q_num,
+            "sec_id": sec_id,
+            "sec_name": sec_name,
+            "time_spent": round(t_spent, 1),
+            "time_str": f"{int(t_spent)}秒",
+            "is_correct": is_correct,
+            "status": item.get("status", "wrong"),
+            "earned_score": earned_score,
+            "score_per_q": score_per_q,
+            "quadrant": quad_key,
+            "split_threshold": threshold
+        })
+
+    # 计算各象限占比
+    for b in quadrant_buckets.values():
+        b["pct_of_total"] = round(b["count"] / total_q_count * 100.0, 1) if total_q_count > 0 else 0.0
+
+    # 模块用时对比与 ROI 抢分效率分析
+    section_pace = []
+    raw_sec_times: Dict[str, Any] = (time_data or {}).get("section_times", {})
+    for sec in section_results:
+        s_id = sec.get("id", sec["name"])
+        s_name = sec["name"]
+        sec_q_items = [it for it in timing_items if it["sec_id"] == s_id or it["sec_name"] == s_name]
+        sec_q_count = len(sec_q_items) or sec.get("total_q", 1)
+
+        bench_per_q = get_section_benchmark_per_q(s_id, s_name)
+        recommended_sec = int(bench_per_q * sec_q_count)
+
+        if str(s_id) in raw_sec_times and float(raw_sec_times[str(s_id)]) > 0:
+            actual_sec = int(float(raw_sec_times[str(s_id)]))
+        else:
+            actual_sec = int(sum(it["time_spent"] for it in sec_q_items))
+
+        earned = float(sec.get("earned_score", 0.0))
+        time_min = actual_sec / 60.0
+        score_rate = round(earned / time_min, 2) if time_min > 0.1 else round(earned, 2)
+
+        if actual_sec <= recommended_sec * 1.05:
+            pace_status = "good"
+            pace_label = "节奏良好"
+        elif actual_sec <= recommended_sec * 1.25:
+            pace_status = "warning"
+            pace_label = "稍显滞后"
+        else:
+            pace_status = "overtime"
+            pace_label = "严重超时"
+
+        section_pace.append({
+            "sec_id": s_id,
+            "name": s_name,
+            "total_q": sec_q_count,
+            "actual_seconds": actual_sec,
+            "recommended_seconds": recommended_sec,
+            "actual_time_str": format_seconds_to_chinese_time(actual_sec),
+            "recommended_time_str": format_seconds_to_chinese_time(recommended_sec),
+            "avg_time_per_q": round(actual_sec / sec_q_count, 1) if sec_q_count > 0 else 0.0,
+            "recommended_per_q": bench_per_q,
+            "earned_score": earned,
+            "score_rate_per_min": score_rate,
+            "pace_status": pace_status,
+            "pace_label": pace_label
+        })
+
+    # 按抢分效率排名
+    sorted_by_roi = sorted(section_pace, key=lambda s: s["score_rate_per_min"], reverse=True)
+    for idx, s in enumerate(sorted_by_roi, start=1):
+        s["roi_rank"] = idx
+
+    # 生成模考关键洞察与提分策略
+    avg_per_q = round(total_elapsed / total_q_count, 1) if total_q_count > 0 else 0.0
+    rec_avg_per_q = round(base_benchmark_sum / total_q_count, 1) if total_q_count > 0 else 52.0
+
+    if avg_per_q <= rec_avg_per_q * 0.95:
+        overall_pace = "fast"
+        overall_pace_label = "极速快攻型"
+    elif avg_per_q <= rec_avg_per_q * 1.10:
+        overall_pace = "optimal"
+        overall_pace_label = "黄金标准配速"
+    else:
+        overall_pace = "slow"
+        overall_pace_label = "偏慢超时型"
+
+    # 最耗时 TOP 3
+    top_time_items = sorted(timing_items, key=lambda x: x["time_spent"], reverse=True)[:3]
+    top_time_str_list = [f"第{it['q_num']}题 ({it['sec_name']} · {it['time_str']} · {'✓对' if it['is_correct'] else '✗错'})" for it in top_time_items]
+
+    insights = []
+    if top_time_items:
+        insights.append(f"【最耗时题目 TOP 3】：{ '、'.join(top_time_str_list) }。耗时偏长题目极易打乱全卷节奏。")
+
+    if sorted_by_roi:
+        best_roi = sorted_by_roi[0]
+        worst_roi = sorted_by_roi[-1]
+        insights.append(f"【抢分王模块】：【{best_roi['name']}】每分钟抢得 {best_roi['score_rate_per_min']} 分，性价比最高，考场中应优先拿下！")
+        if worst_roi["score_rate_per_min"] < 0.5:
+            insights.append(f"【低性价比警示】：【{worst_roi['name']}】每分钟产出仅 {worst_roi['score_rate_per_min']} 分，实战切忌在该模块过多死磕，避免挤占高产模块用时。")
+
+    time_sink_bucket = quadrant_buckets["time_sink"]
+    if time_sink_bucket["count"] > 0:
+        insights.append(f"【高危雷区警报】：共踩中 {time_sink_bucket['count']} 道陷阱题，痛失 {time_sink_bucket['score_amount']} 分！建议实战严格执行‘超时80秒无思路即蒙猜跳过’的纪律。")
+
+    return {
+        "has_granular_timing": has_granular_timing,
+        "total_elapsed_seconds": total_elapsed,
+        "total_time_str": format_seconds_to_chinese_time(total_elapsed),
+        "avg_time_per_q": avg_per_q,
+        "recommended_avg_time": rec_avg_per_q,
+        "pace_status": overall_pace,
+        "pace_status_label": overall_pace_label,
+        "quadrants": quadrant_buckets,
+        "section_pace": section_pace,
+        "timing_items": timing_items,
+        "key_insights": insights
+    }
+
+
 def judge_omr_sheet(
     student_answers: Dict[int, Optional[str]],
     standard_answers: Dict[int, str],
     sections_config: Optional[List[Dict[str, Any]]] = None,
-    custom_time_str: str = "25分00秒"
+    custom_time_str: str = "25分00秒",
+    time_data: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
     """对填涂卡选项进行逐题核对、分模块核算与全卷学情诊断。
 
@@ -329,12 +645,14 @@ def judge_omr_sheet(
         - standard_answers: 标准答案映射，格式 {题号: "A"/"B"/"C"/"D"}
         - sections_config: 模块与分值配置列表
         - custom_time_str: 作答用时
+        - time_data: 模考作答时间细节数据（单题用时、各模块耗时等）
 
     返回：
         dict 结构：
             - summary: 全卷得分、总题数、做对数、做错数、未填数、正确率、评级
             - section_results: 各模块明细指标
             - diagnosis: 针对行测各科目的诊断与提分建议
+            - timing_analysis: 模考做题节奏与四象限性价比诊断
             - items: 1~N 题的逐题判分明细
     """
     target_sections: List[Dict[str, Any]] = (
@@ -464,6 +782,14 @@ def judge_omr_sheet(
     # 生成行测五大模块专属学情诊断
     diagnosis = generate_omr_diagnosis(section_results_list, total_earned_score, total_max_score, custom_time_str)
 
+    # 模考做题节奏监控与用时-得分四象限性价比分析
+    timing_analysis = analyze_exam_timing(
+        judged_items=judged_items,
+        section_results=section_results_list,
+        time_data=time_data,
+        custom_time_str=custom_time_str
+    )
+
     return {
         "summary": {
             "total_questions": total_q_count,
@@ -480,6 +806,7 @@ def judge_omr_sheet(
         },
         "section_results": section_results_list,
         "diagnosis": diagnosis,
+        "timing_analysis": timing_analysis,
         "items": judged_items
     }
 
@@ -556,3 +883,4 @@ def generate_omr_diagnosis(
         "speed_advice": speed_advice,
         "actionable_tips": tips
     }
+

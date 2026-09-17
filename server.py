@@ -440,6 +440,7 @@ async def api_grade_omr(
     sections_json: Optional[str] = Form(None),
     exam_title: Optional[str] = Form(None),
     time_str: str = Form("110分00秒"),
+    time_data_json: Optional[str] = Form(None),
     model: Optional[str] = Form(None),
     api_base_url: Optional[str] = Form(None),
     api_key: Optional[str] = Form(None),
@@ -465,6 +466,13 @@ async def api_grade_omr(
     exam_title_str = exam_title if isinstance(exam_title, str) else None
     time_str_val = time_str if isinstance(time_str, str) else "110分00秒"
     ans_key_str = answer_key if isinstance(answer_key, str) else str(getattr(answer_key, "default", ""))
+
+    time_data_dict: Optional[Dict[str, Any]] = None
+    if time_data_json and isinstance(time_data_json, str) and time_data_json.strip():
+        try:
+            time_data_dict = json.loads(time_data_json)
+        except Exception as tde:
+            logger.warning(f"[OMR-Grade] time_data_json 解析失败: task_id={task_id}, error={tde}")
 
     mode = "图片识别" if (file is not None and getattr(file, "filename", None)) else ("在线作答" if (stu_ans_str and stu_ans_str.strip()) else ("Mock模拟" if mock == 1 else "重判纠错"))
     hybrid_stats: Optional[Dict[str, Any]] = None
@@ -575,7 +583,8 @@ async def api_grade_omr(
             student_answers,
             parsed_std_answers,
             sections_config=sections_config,
-            custom_time_str=time_str_val
+            custom_time_str=time_str_val,
+            time_data=time_data_dict
         )
         if hybrid_stats:
             judged_data.setdefault("summary", {})["hybrid_stats"] = hybrid_stats
@@ -604,6 +613,7 @@ async def api_grade_omr(
             "summary": judged_data["summary"],
             "section_results": judged_data["section_results"],
             "diagnosis": judged_data["diagnosis"],
+            "timing_analysis": judged_data.get("timing_analysis"),
             "student_answers": student_answers,
             "items": judged_data["items"],
             "card_url": f"/output/{task_id}_card.jpg",
@@ -631,6 +641,7 @@ async def api_grade_omr(
             "summary": judged_data["summary"],
             "section_results": judged_data["section_results"],
             "diagnosis": judged_data["diagnosis"],
+            "timing_analysis": judged_data.get("timing_analysis"),
             "card_url": f"/output/{task_id}_card.jpg",
             "report_url": f"/output/{task_id}_report.json",
             "student_answers": student_answers,

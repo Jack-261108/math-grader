@@ -5,6 +5,7 @@ import { getHistoryDetail } from '../api/history';
 import { useConfigStore } from './config';
 import { useModalStore } from './modal';
 import { compressImage } from '../utils/imageCompressor';
+import { DEFAULT_EXAM_DURATION_MINUTES, formatTimerSeconds, formatSecondsToChinese } from '../constants/examTiming';
 
 const FALLBACK_PRESETS = {
   guokao_135: {
@@ -90,6 +91,17 @@ export const useOmrStore = defineStore('omr', () => {
   const onlineViewMode = ref('sheet'); // 'sheet' | 'exam'
   const onlineAnswers = ref({}); // { 1: 'A', 2: 'B', ... }
 
+  // 全真模考与做题节奏监控
+  const isMockExamActive = ref(false);
+  const examDurationMinutes = ref(DEFAULT_EXAM_DURATION_MINUTES);
+  const examTimeRemaining = ref(DEFAULT_EXAM_DURATION_MINUTES * 60);
+  const examTimeElapsed = ref(0);
+  const examTimerStatus = ref('idle'); // 'idle' | 'running' | 'paused' | 'finished'
+  const questionTimes = ref({}); // { [qNum]: seconds }
+  const sectionTimes = ref({}); // { [secId]: seconds }
+  const activeTrackingQ = ref(1);
+  let timerInterval = null;
+
   const isLoading = ref(false);
   const loadingTitle = ref('正在智能批改行测答题卡...');
   const loadingSubtitle = ref('正在识别填涂卡点位并分模块核算分值');
@@ -137,7 +149,95 @@ export const useOmrStore = defineStore('omr', () => {
     });
   });
 
+  const formattedTimeRemaining = computed(() => formatTimerSeconds(examTimeRemaining.value));
+  const formattedTimeElapsed = computed(() => formatSecondsToChinese(examTimeElapsed.value));
+  const averagePaceSeconds = computed(() => {
+    const answered = answeredOnlineCount.value;
+    if (answered === 0 || examTimeElapsed.value === 0) return 0;
+    return Math.round(examTimeElapsed.value / answered);
+  });
+  const isTimeCritical = computed(() => examTimeRemaining.value > 0 && examTimeRemaining.value <= 300);
+  const isTimeWarning = computed(() => examTimeRemaining.value > 300 && examTimeRemaining.value <= 900);
+
   // 动作
+  function findSectionForQ(qNum) {
+    const num = parseInt(qNum, 10);
+    return currentSections.value.find(s => num >= s.start_q && num <= s.end_q) || null;
+  }
+
+  function tickTimer() {
+    if (examTimeRemaining.value > 0) {
+      examTimeRemaining.value--;
+    } else {
+      examTimerStatus.value = 'finished';
+      pauseMockExam();
+      return;
+    }
+    examTimeElapsed.value++;
+
+    const q = activeTrackingQ.value;
+    if (q) {
+      const prev = questionTimes.value[q] || 0;
+      // 单题防挂机：超过 300 秒暂缓自动累加
+      if (prev < 300) {
+        questionTimes.value[q] = prev + 1;
+        const sec = findSectionForQ(q);
+        if (sec) {
+          const secKey = sec.id || sec.name;
+          sectionTimes.value[secKey] = (sectionTimes.value[secKey] || 0) + 1;
+        }
+      }
+    }
+  }
+
+  function startMockExam(durationMin) {
+    const targetMin = durationMin || (totalQuestions.value <= 30 ? Math.max(15, totalQuestions.value) : DEFAULT_EXAM_DURATION_MINUTES);
+    examDurationMinutes.value = targetMin;
+    examTimeRemaining.value = targetMin * 60;
+    examTimeElapsed.value = 0;
+    isMockExamActive.value = true;
+    examTimerStatus.value = 'running';
+    if (timerInterval) clearInterval(timerInterval);
+    timerInterval = setInterval(tickTimer, 1000);
+  }
+
+  function pauseMockExam() {
+    if (timerInterval) {
+      clearInterval(timerInterval);
+      timerInterval = null;
+    }
+    if (examTimerStatus.value === 'running') {
+      examTimerStatus.value = 'paused';
+    }
+  }
+
+  function resumeMockExam() {
+    if (examTimerStatus.value === 'paused' || examTimerStatus.value === 'idle') {
+      examTimerStatus.value = 'running';
+      isMockExamActive.value = true;
+      if (timerInterval) clearInterval(timerInterval);
+      timerInterval = setInterval(tickTimer, 1000);
+    }
+  }
+
+  function resetMockExam() {
+    pauseMockExam();
+    examTimerStatus.value = 'idle';
+    isMockExamActive.value = false;
+    const targetMin = totalQuestions.value <= 30 ? Math.max(15, totalQuestions.value) : DEFAULT_EXAM_DURATION_MINUTES;
+    examDurationMinutes.value = targetMin;
+    examTimeRemaining.value = targetMin * 60;
+    examTimeElapsed.value = 0;
+    questionTimes.value = {};
+    sectionTimes.value = {};
+    activeTrackingQ.value = 1;
+  }
+
+  function recordQuestionFocus(qNum) {
+    if (qNum) {
+      activeTrackingQ.value = parseInt(qNum, 10);
+    }
+  }
   async function fetchServerPresets() {
     try {
       const res = await getOmrPresets();
@@ -175,6 +275,11 @@ export const useOmrStore = defineStore('omr', () => {
       delete onlineAnswers.value[qNum];
     } else {
       onlineAnswers.value[qNum] = String(choice).trim().toUpperCase();
+    }
+    recordQuestionFocus(qNum);
+    // 若尚未启动模考，在填涂第 1 题时若处于模考状态，自动启动或恢复计时
+    if (isMockExamActive.value && examTimerStatus.value === 'idle') {
+      resumeMockExam();
     }
   }
 
@@ -239,9 +344,17 @@ export const useOmrStore = defineStore('omr', () => {
       throw new Error('您尚未在答题卡填涂任何选项！请先点击选项字母填涂后再交卷。');
     }
 
+    // 暂停并封存模考计时
+    if (examTimerStatus.value === 'running') {
+      pauseMockExam();
+    }
+    if (examTimeElapsed.value > 0) {
+      timeStr.value = formatSecondsToChinese(examTimeElapsed.value);
+    }
+
     isLoading.value = true;
     loadingTitle.value = '正在提交在线答卷并智能判分...';
-    loadingSubtitle.value = '正在分模块核算得分率并生成全景答题卡';
+    loadingSubtitle.value = '正在核算四象限做题节奏与性价比诊断';
 
     try {
       const fd = new FormData();
@@ -251,6 +364,14 @@ export const useOmrStore = defineStore('omr', () => {
       fd.append('preset_id', currentPresetId.value);
       fd.append('sections_json', JSON.stringify(currentSections.value));
       fd.append('time_str', timeStr.value || '110分00秒');
+
+      const timeData = {
+        is_mock_exam: isMockExamActive.value,
+        total_elapsed_seconds: examTimeElapsed.value,
+        question_times: questionTimes.value,
+        section_times: sectionTimes.value
+      };
+      fd.append('time_data_json', JSON.stringify(timeData));
 
       const pData = presets.value[currentPresetId.value] || FALLBACK_PRESETS[currentPresetId.value];
       fd.append('exam_title', pData.name || '行测在线模考答题卡');
@@ -372,6 +493,7 @@ export const useOmrStore = defineStore('omr', () => {
     rawTaskId.value = '';
     originalStudentAnswers.value = {};
     workingStudentAnswers.value = {};
+    resetMockExam();
   }
 
   return {
@@ -384,6 +506,24 @@ export const useOmrStore = defineStore('omr', () => {
     activeSubMode,
     onlineViewMode,
     onlineAnswers,
+    isMockExamActive,
+    examDurationMinutes,
+    examTimeRemaining,
+    examTimeElapsed,
+    examTimerStatus,
+    questionTimes,
+    sectionTimes,
+    activeTrackingQ,
+    formattedTimeRemaining,
+    formattedTimeElapsed,
+    averagePaceSeconds,
+    isTimeCritical,
+    isTimeWarning,
+    startMockExam,
+    pauseMockExam,
+    resumeMockExam,
+    resetMockExam,
+    recordQuestionFocus,
     isLoading,
     loadingTitle,
     loadingSubtitle,
