@@ -434,6 +434,13 @@ def analyze_exam_timing(
         base_benchmark_sum += get_section_benchmark_per_q(sec_id, sec_name)
     scale_factor = (total_elapsed / base_benchmark_sum) if base_benchmark_sum > 0 else 1.0
 
+    # 预统计各模块题数（用于纸质模考分段打卡耗时平摊）
+    raw_sec_times: Dict[str, Any] = (time_data or {}).get("section_times", {})
+    sec_q_counts: Dict[str, int] = {}
+    for item in judged_items:
+        s_k = str(item.get("section_id") or item.get("section_name") or "")
+        sec_q_counts[s_k] = sec_q_counts.get(s_k, 0) + 1
+
     timing_items = []
     quadrant_buckets: Dict[str, Dict[str, Any]] = {
         "high_efficiency": {
@@ -493,6 +500,22 @@ def analyze_exam_timing(
             try:
                 t_spent = max(1.0, min(600.0, float(raw_t)))
             except Exception:
+                t_spent = max(1.0, round(base_bench * scale_factor, 1))
+        elif raw_sec_times and (str(sec_id) in raw_sec_times or str(sec_name) in raw_sec_times):
+            # 纸质模考模块分段打卡用时平摊拟合
+            raw_val = raw_sec_times.get(str(sec_id), raw_sec_times.get(str(sec_name), 0))
+            try:
+                sec_time_val = float(raw_val)
+            except Exception:
+                sec_time_val = 0.0
+
+            if sec_time_val > 0:
+                s_k = str(sec_id or sec_name or "")
+                q_cnt = max(1, sec_q_counts.get(s_k, 1))
+                sec_bench_total = base_bench * q_cnt
+                sec_scale = (sec_time_val / sec_bench_total) if sec_bench_total > 0 else 1.0
+                t_spent = max(1.0, round(base_bench * sec_scale, 1))
+            else:
                 t_spent = max(1.0, round(base_bench * scale_factor, 1))
         else:
             # 依据模块权重自适应拟合分配

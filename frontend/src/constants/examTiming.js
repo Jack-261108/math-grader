@@ -106,3 +106,108 @@ export function formatSecondsToChinese(seconds) {
   }
   return `${s}秒`;
 }
+
+/**
+ * 行测纸质模考常见做题时长预设
+ */
+export const EXAM_DURATION_PRESETS = [
+  { min: 120, label: "标准模考 120m", desc: "国考/省考行测标准考场控时" },
+  { min: 90, label: "高压冲刺 90m", desc: "抗压实战练习，逼出潜能" },
+  { min: 60, label: "半卷强化 60m", desc: "三大主力模块连做" },
+  { min: 30, label: "小卷微模 30m", desc: "午间/晚间碎片时间模考" },
+  { min: 15, label: "专项突击 15m", desc: "单篇资料或专项突破" }
+];
+
+/**
+ * 公考实战常见做题策略路线
+ */
+export const PAPER_EXAM_STRATEGIES = [
+  {
+    id: "default",
+    name: "大纲标准顺序",
+    desc: "按试卷题号从头到尾稳步推进"
+  },
+  {
+    id: "data_first",
+    name: "资料主力抢分流",
+    desc: "精力最充沛时攻克高性价比资料分析"
+  },
+  {
+    id: "easy_first",
+    name: "先易后难抢分流",
+    desc: "先拿稳常识言语图推，后啃大题"
+  }
+];
+
+/**
+ * 考场温和提示音生成器 (基于原生 Web Audio API，无须外部音频文件)
+ */
+export function playExamChime(type = "lap") {
+  if (typeof window === "undefined" || !window.AudioContext && !window.webkitAudioContext) return;
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    const ctx = new AudioCtx();
+    const now = ctx.currentTime;
+
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    if (type === "start") {
+      // 欢快两音阶上行
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(523.25, now); // C5
+      osc.frequency.exponentialRampToValueAtTime(659.25, now + 0.15); // E5
+      gain.gain.setValueAtTime(0.2, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+      osc.start(now);
+      osc.stop(now + 0.5);
+    } else if (type === "warning") {
+      // 警示双音
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(440, now);
+      osc.frequency.setValueAtTime(349.23, now + 0.18);
+      gain.gain.setValueAtTime(0.25, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.6);
+      osc.start(now);
+      osc.stop(now + 0.6);
+    } else if (type === "finish") {
+      // 考场结束长钟声
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(392.00, now); // G4
+      gain.gain.setValueAtTime(0.3, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 1.2);
+      osc.start(now);
+      osc.stop(now + 1.2);
+    } else {
+      // lap 打卡清脆音
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(880, now); // A5
+      gain.gain.setValueAtTime(0.18, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+      osc.start(now);
+      osc.stop(now + 0.3);
+    }
+  } catch (e) {
+    // 忽略音频上下文限制
+  }
+}
+
+/**
+ * 考场广播朗读器 (基于 Web Speech API)
+ */
+export function speakExamBroadcast(text) {
+  if (typeof window === "undefined" || !('speechSynthesis' in window)) return;
+  try {
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = "zh-CN";
+    utterance.rate = 1.0;
+    utterance.pitch = 1.0;
+    window.speechSynthesis.speak(utterance);
+  } catch (e) {
+    // 忽略朗读异常
+  }
+}
+

@@ -5,7 +5,7 @@ import { getHistoryDetail } from '../api/history';
 import { useConfigStore } from './config';
 import { useModalStore } from './modal';
 import { compressImage } from '../utils/imageCompressor';
-import { DEFAULT_EXAM_DURATION_MINUTES, formatTimerSeconds, formatSecondsToChinese } from '../constants/examTiming';
+import { DEFAULT_EXAM_DURATION_MINUTES, formatTimerSeconds, formatSecondsToChinese, playExamChime, speakExamBroadcast, getSectionBenchmark } from '../constants/examTiming';
 
 const FALLBACK_PRESETS = {
   guokao_135: {
@@ -97,10 +97,18 @@ export const useOmrStore = defineStore('omr', () => {
   const examTimeRemaining = ref(DEFAULT_EXAM_DURATION_MINUTES * 60);
   const examTimeElapsed = ref(0);
   const examTimerStatus = ref('idle'); // 'idle' | 'running' | 'paused' | 'finished'
+  const paperTimerMode = ref('countdown'); // 'countdown' | 'stopwatch'
   const questionTimes = ref({}); // { [qNum]: seconds }
   const sectionTimes = ref({}); // { [secId]: seconds }
   const activeTrackingQ = ref(1);
+  const activePaperSecKey = ref(''); // 当前纸质做题打卡聚焦模块
+  const isScreenWakeLocked = ref(false);
+  const soundAlertMode = ref('voice'); // 'voice' | 'beep' | 'mute'
+  const isManualTimeOpen = ref(false);
+  const manualSectionMinutes = ref({}); // { [secKey]: minutes }
+  const isFullscreenPaperTimer = ref(false);
   let timerInterval = null;
+  let wakeLockSentinel = null;
 
   const isLoading = ref(false);
   const loadingTitle = ref('正在智能批改行测答题卡...');
@@ -156,8 +164,54 @@ export const useOmrStore = defineStore('omr', () => {
     if (answered === 0 || examTimeElapsed.value === 0) return 0;
     return Math.round(examTimeElapsed.value / answered);
   });
-  const isTimeCritical = computed(() => examTimeRemaining.value > 0 && examTimeRemaining.value <= 300);
-  const isTimeWarning = computed(() => examTimeRemaining.value > 300 && examTimeRemaining.value <= 900);
+  const isTimeCritical = computed(() => paperTimerMode.value === 'countdown' && examTimeRemaining.value > 0 && examTimeRemaining.value <= 300);
+  const isTimeWarning = computed(() => paperTimerMode.value === 'countdown' && examTimeRemaining.value > 300 && examTimeRemaining.value <= 900);
+
+  // 纸质做题当前模块计算属性
+  const effectiveActivePaperSec = computed(() => {
+    if (!currentSections.value || currentSections.value.length === 0) return null;
+    if (activePaperSecKey.value) {
+      const found = currentSections.value.find(s => (s.id || s.name) === activePaperSecKey.value);
+      if (found) return found;
+    }
+    return currentSections.value[0];
+  });
+
+  const effectivePaperSecKey = computed(() => {
+    const sec = effectiveActivePaperSec.value;
+    return sec ? (sec.id || sec.name) : 'common_sense';
+  });
+
+  const activePaperBenchmark = computed(() => {
+    const sec = effectiveActivePaperSec.value;
+    if (!sec) return getSectionBenchmark();
+    return getSectionBenchmark(sec.id, sec.name);
+  });
+
+  const activePaperSecElapsed = computed(() => {
+    const key = effectivePaperSecKey.value;
+    return sectionTimes.value[key] || 0;
+  });
+
+  const activePaperTargetSeconds = computed(() => {
+    const sec = effectiveActivePaperSec.value;
+    if (!sec) return 600;
+    const qCount = Math.max(1, sec.end_q - sec.start_q + 1);
+    const bench = activePaperBenchmark.value;
+    // 优先采用 单题建议用时 * 题数
+    return Math.round((bench.perQSec || 50) * qCount);
+  });
+
+  const activePaperProgressPct = computed(() => {
+    const target = activePaperTargetSeconds.value;
+    if (!target) return 0;
+    const pct = Math.round((activePaperSecElapsed.value / target) * 100);
+    return Math.min(100, Math.max(0, pct));
+  });
+
+  const activePaperIsOvertime = computed(() => {
+    return activePaperSecElapsed.value > activePaperTargetSeconds.value;
+  });
 
   // 动作
   function findSectionForQ(qNum) {
@@ -165,38 +219,90 @@ export const useOmrStore = defineStore('omr', () => {
     return currentSections.value.find(s => num >= s.start_q && num <= s.end_q) || null;
   }
 
-  function tickTimer() {
-    if (examTimeRemaining.value > 0) {
-      examTimeRemaining.value--;
-    } else {
-      examTimerStatus.value = 'finished';
-      pauseMockExam();
-      return;
-    }
-    examTimeElapsed.value++;
-
-    const q = activeTrackingQ.value;
-    if (q) {
-      const prev = questionTimes.value[q] || 0;
-      // 单题防挂机：超过 300 秒暂缓自动累加
-      if (prev < 300) {
-        questionTimes.value[q] = prev + 1;
-        const sec = findSectionForQ(q);
-        if (sec) {
-          const secKey = sec.id || sec.name;
-          sectionTimes.value[secKey] = (sectionTimes.value[secKey] || 0) + 1;
-        }
+  // 防息屏常亮控制 (Web Screen Wake Lock API)
+  async function requestScreenWakeLock() {
+    if (typeof navigator !== 'undefined' && 'wakeLock' in navigator) {
+      try {
+        wakeLockSentinel = await navigator.wakeLock.request('screen');
+        isScreenWakeLocked.value = true;
+        wakeLockSentinel.addEventListener('release', () => {
+          isScreenWakeLocked.value = false;
+        });
+      } catch (err) {
+        isScreenWakeLocked.value = false;
       }
     }
   }
 
-  function startMockExam(durationMin) {
+  async function releaseScreenWakeLock() {
+    if (wakeLockSentinel) {
+      try {
+        await wakeLockSentinel.release();
+        wakeLockSentinel = null;
+      } catch (e) {}
+      isScreenWakeLocked.value = false;
+    }
+  }
+
+  function triggerSoundAlert(type, text = "") {
+    if (soundAlertMode.value === 'mute') return;
+    if (soundAlertMode.value === 'beep' || soundAlertMode.value === 'voice') {
+      playExamChime(type);
+    }
+    if (soundAlertMode.value === 'voice' && text) {
+      speakExamBroadcast(text);
+    }
+  }
+
+  function tickTimer() {
+    if (paperTimerMode.value === 'countdown') {
+      if (examTimeRemaining.value > 0) {
+        examTimeRemaining.value--;
+        // 关键节点考场提醒
+        if (examTimeRemaining.value === 900) {
+          triggerSoundAlert('warning', '考场提示：离考试结束还有15分钟，请注意填涂答题卡并检查个人信息。');
+        } else if (examTimeRemaining.value === 300) {
+          triggerSoundAlert('warning', '考场紧急提示：离考试结束还有5分钟，请准备停笔。');
+        }
+      } else {
+        examTimerStatus.value = 'finished';
+        triggerSoundAlert('finish', '考试时间到，请全体考生停止答题。');
+        pauseMockExam();
+        return;
+      }
+    }
+    examTimeElapsed.value++;
+
+    // 纸质做题场景：每秒同步累加当前聚焦模块用时
+    const pKey = effectivePaperSecKey.value;
+    if (pKey) {
+      sectionTimes.value[pKey] = (sectionTimes.value[pKey] || 0) + 1;
+    }
+
+    // 在线做题单题追踪（兼容在线答题模式）
+    const q = activeTrackingQ.value;
+    if (q) {
+      const prev = questionTimes.value[q] || 0;
+      if (prev < 300) {
+        questionTimes.value[q] = prev + 1;
+      }
+    }
+  }
+
+  function startMockExam(durationMin, mode = 'countdown') {
+    paperTimerMode.value = mode;
     const targetMin = durationMin || (totalQuestions.value <= 30 ? Math.max(15, totalQuestions.value) : DEFAULT_EXAM_DURATION_MINUTES);
     examDurationMinutes.value = targetMin;
     examTimeRemaining.value = targetMin * 60;
     examTimeElapsed.value = 0;
     isMockExamActive.value = true;
     examTimerStatus.value = 'running';
+    if (!activePaperSecKey.value && currentSections.value && currentSections.value.length > 0) {
+      activePaperSecKey.value = currentSections.value[0].id || currentSections.value[0].name;
+    }
+    requestScreenWakeLock();
+    triggerSoundAlert('start', '考试开始，请全体考生开始答卷。');
+
     if (timerInterval) clearInterval(timerInterval);
     timerInterval = setInterval(tickTimer, 1000);
   }
@@ -209,12 +315,14 @@ export const useOmrStore = defineStore('omr', () => {
     if (examTimerStatus.value === 'running') {
       examTimerStatus.value = 'paused';
     }
+    releaseScreenWakeLock();
   }
 
   function resumeMockExam() {
     if (examTimerStatus.value === 'paused' || examTimerStatus.value === 'idle') {
       examTimerStatus.value = 'running';
       isMockExamActive.value = true;
+      requestScreenWakeLock();
       if (timerInterval) clearInterval(timerInterval);
       timerInterval = setInterval(tickTimer, 1000);
     }
@@ -231,6 +339,70 @@ export const useOmrStore = defineStore('omr', () => {
     questionTimes.value = {};
     sectionTimes.value = {};
     activeTrackingQ.value = 1;
+    if (currentSections.value && currentSections.value.length > 0) {
+      activePaperSecKey.value = currentSections.value[0].id || currentSections.value[0].name;
+    }
+    releaseScreenWakeLock();
+  }
+
+  // 纸质做题：切换当前作答模块（自由跳序作答）
+  function switchPaperSection(secKey) {
+    if (!secKey) return;
+    activePaperSecKey.value = secKey;
+    const sec = currentSections.value.find(s => (s.id || s.name) === secKey);
+    if (sec) {
+      triggerSoundAlert('lap', `已切换至${sec.name}，建议用时${Math.round((activePaperBenchmark.value?.targetMin || 25))}分钟。`);
+    }
+  }
+
+  // 纸质做题：完成当前模块打卡并自动顺延下一模块
+  function lapPaperSection() {
+    const curSec = effectiveActivePaperSec.value;
+    const curSecName = curSec ? curSec.name : "当前模块";
+    const curElapsedSec = activePaperSecElapsed.value;
+    const curElapsedStr = formatSecondsToChinese(curElapsedSec);
+
+    // 顺延查找下一个未完结的模块
+    const secs = currentSections.value || [];
+    const curIdx = secs.findIndex(s => (s.id || s.name) === effectivePaperSecKey.value);
+    let nextSec = null;
+    if (curIdx >= 0 && curIdx < secs.length - 1) {
+      nextSec = secs[curIdx + 1];
+    } else if (secs.length > 0) {
+      nextSec = secs[0];
+    }
+
+    if (nextSec) {
+      activePaperSecKey.value = nextSec.id || nextSec.name;
+      triggerSoundAlert('lap', `${curSecName}完成，用时${curElapsedStr}。已切入${nextSec.name}。`);
+    } else {
+      triggerSoundAlert('lap', `${curSecName}完成，用时${curElapsedStr}。`);
+    }
+  }
+
+  // 纸质做题完成：停表并准备拍照批改
+  function finishPaperExam() {
+    pauseMockExam();
+    examTimerStatus.value = 'finished';
+    if (examTimeElapsed.value > 0) {
+      timeStr.value = formatSecondsToChinese(examTimeElapsed.value);
+    }
+    triggerSoundAlert('finish', '全卷作答完成，请对准纸质答题卡进行拍照批改。');
+  }
+
+  // 手工补录各模块纸质用时
+  function applyManualSectionTimes(minMap = {}) {
+    let sumSec = 0;
+    Object.keys(minMap).forEach(k => {
+      const mins = parseFloat(minMap[k]) || 0;
+      const s = Math.round(mins * 60);
+      sectionTimes.value[k] = s;
+      sumSec += s;
+    });
+    if (sumSec > 0) {
+      examTimeElapsed.value = sumSec;
+      timeStr.value = formatSecondsToChinese(sumSec);
+    }
   }
 
   function recordQuestionFocus(qNum) {
@@ -322,6 +494,21 @@ export const useOmrStore = defineStore('omr', () => {
       fd.append('preset_id', currentPresetId.value);
       fd.append('sections_json', JSON.stringify(currentSections.value));
       fd.append('time_str', timeStr.value || '110分00秒');
+
+      // 自动封存并携带纸质模考或手动录入的 timing 节奏数据
+      if (examTimerStatus.value === 'running') {
+        pauseMockExam();
+      }
+      if (examTimeElapsed.value > 0) {
+        timeStr.value = formatSecondsToChinese(examTimeElapsed.value);
+      }
+      const timeData = {
+        is_mock_exam: isMockExamActive.value || Boolean(examTimeElapsed.value > 0),
+        total_elapsed_seconds: examTimeElapsed.value,
+        question_times: questionTimes.value,
+        section_times: sectionTimes.value
+      };
+      fd.append('time_data_json', JSON.stringify(timeData));
 
       const pData = presets.value[currentPresetId.value] || FALLBACK_PRESETS[currentPresetId.value];
       fd.append('exam_title', pData.name || '行测答题卡诊断');
@@ -514,6 +701,20 @@ export const useOmrStore = defineStore('omr', () => {
     questionTimes,
     sectionTimes,
     activeTrackingQ,
+    paperTimerMode,
+    activePaperSecKey,
+    isScreenWakeLocked,
+    soundAlertMode,
+    isManualTimeOpen,
+    manualSectionMinutes,
+    isFullscreenPaperTimer,
+    effectiveActivePaperSec,
+    effectivePaperSecKey,
+    activePaperBenchmark,
+    activePaperSecElapsed,
+    activePaperTargetSeconds,
+    activePaperProgressPct,
+    activePaperIsOvertime,
     formattedTimeRemaining,
     formattedTimeElapsed,
     averagePaceSeconds,
@@ -523,6 +724,13 @@ export const useOmrStore = defineStore('omr', () => {
     pauseMockExam,
     resumeMockExam,
     resetMockExam,
+    switchPaperSection,
+    lapPaperSection,
+    finishPaperExam,
+    applyManualSectionTimes,
+    requestScreenWakeLock,
+    releaseScreenWakeLock,
+    triggerSoundAlert,
     recordQuestionFocus,
     isLoading,
     loadingTitle,

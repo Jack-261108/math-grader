@@ -171,54 +171,70 @@
       </div>
     </div>
 
-    <!-- 拍照批改交互横幅 (当 activeSubMode === 'scan') -->
-    <div v-if="omrStore.activeSubMode === 'scan'" class="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-2xl p-5 text-white shadow-md relative overflow-hidden space-y-4">
-      <div class="relative z-10 space-y-3">
-        <div>
-          <h2 class="text-xl font-bold mb-1">对准行测答题卡，一键拍照批改</h2>
-          <p class="text-blue-100 text-xs leading-relaxed">
-            自动匹配填涂卡ABCD点位，分模块核算分值与正确率，生成原卷红绿批注与学情诊断报告。
-          </p>
+    <!-- 纸质做题场景 (当 activeSubMode === 'scan')：全真模考伴考中控台 + 拍照识别入口 -->
+    <template v-if="omrStore.activeSubMode === 'scan'">
+      <!-- 纸质模考伴考中控台 (倒计时、模块打卡、考场广播、防息屏) -->
+      <OmrPaperTimer @trigger-camera="triggerOmrCamera" />
+
+      <!-- 拍照批改交互横幅 -->
+      <div class="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-2xl p-5 text-white shadow-md relative overflow-hidden space-y-4">
+        <div class="relative z-10 space-y-3">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <h2 class="text-xl font-bold mb-1">对准纸质答题卡，一键拍照批改</h2>
+              <p class="text-blue-100 text-xs leading-relaxed">
+                自动匹配填涂卡 ABCD 点位，分模块核算分值，考后自动生成做题节奏与四象限性价比诊断。
+              </p>
+            </div>
+            <!-- 计时同步状态胶囊 -->
+            <div
+              v-if="omrStore.examTimeElapsed > 0"
+              class="shrink-0 bg-white/15 backdrop-blur-xs border border-white/20 px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center space-x-1.5"
+            >
+              <i class="fa-solid fa-clock text-amber-300"></i>
+              <span>已同步做题用时: <b class="text-white font-mono">{{ omrStore.formattedTimeElapsed }}</b></span>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2.5">
+            <button
+              type="button"
+              @click="triggerOmrCamera"
+              class="flex items-center justify-center space-x-2 bg-white text-blue-700 hover:bg-blue-50 active:scale-98 transition font-bold py-3 px-3 rounded-xl shadow text-sm cursor-pointer"
+            >
+              <i class="fa-solid fa-camera text-base"></i>
+              <span>拍照批改</span>
+            </button>
+            <button
+              type="button"
+              @click="triggerOmrAlbum"
+              class="flex items-center justify-center space-x-2 bg-blue-800/40 hover:bg-blue-800/60 active:scale-98 transition font-medium text-white border border-white/20 py-3 px-3 rounded-xl text-sm cursor-pointer"
+            >
+              <i class="fa-solid fa-image text-base"></i>
+              <span>相册选取</span>
+            </button>
+          </div>
+
+          <!-- 仅拍照识别选项 (先核验后批改) -->
+          <div class="pt-1">
+            <button
+              type="button"
+              @click="triggerRecognizeOnly"
+              class="w-full py-2 px-3 bg-blue-500/30 hover:bg-blue-500/50 active:bg-blue-500/60 text-white rounded-xl text-xs font-semibold flex items-center justify-center space-x-1.5 transition border border-white/20 cursor-pointer"
+            >
+              <i class="fa-solid fa-eye text-xs"></i>
+              <span>仅拍照识别填涂 (先核对后批改)</span>
+            </button>
+          </div>
         </div>
 
-        <div class="grid grid-cols-2 gap-2.5">
-          <button
-            type="button"
-            @click="triggerOmrCamera"
-            class="flex items-center justify-center space-x-2 bg-white text-blue-700 hover:bg-blue-50 active:scale-98 transition font-bold py-3 px-3 rounded-xl shadow text-sm cursor-pointer"
-          >
-            <i class="fa-solid fa-camera text-base"></i>
-            <span>拍照批改</span>
-          </button>
-          <button
-            type="button"
-            @click="triggerOmrAlbum"
-            class="flex items-center justify-center space-x-2 bg-blue-800/40 hover:bg-blue-800/60 active:scale-98 transition font-medium text-white border border-white/20 py-3 px-3 rounded-xl text-sm cursor-pointer"
-          >
-            <i class="fa-solid fa-image text-base"></i>
-            <span>相册选取</span>
-          </button>
-        </div>
+        <input ref="omrCameraInput" type="file" accept="image/*" capture="environment" class="hidden" @change="handleOmrFileChange">
+        <input ref="omrAlbumInput" type="file" accept="image/*" class="hidden" @change="handleOmrFileChange">
+        <input ref="recognizeInput" type="file" accept="image/*" class="hidden" @change="handleRecognizeChange">
 
-        <!-- 仅拍照识别选项 (先核验后批改) -->
-        <div class="pt-1">
-          <button
-            type="button"
-            @click="triggerRecognizeOnly"
-            class="w-full py-2 px-3 bg-blue-500/30 hover:bg-blue-500/50 active:bg-blue-500/60 text-white rounded-xl text-xs font-semibold flex items-center justify-center space-x-1.5 transition border border-white/20 cursor-pointer"
-          >
-            <i class="fa-solid fa-eye text-xs"></i>
-            <span>仅拍照识别填涂 (先核对后批改)</span>
-          </button>
-        </div>
+        <i class="fa-solid fa-table-cells absolute right-1 bottom-1 text-8xl text-white/10 pointer-events-none"></i>
       </div>
-
-      <input ref="omrCameraInput" type="file" accept="image/*" capture="environment" class="hidden" @change="handleOmrFileChange">
-      <input ref="omrAlbumInput" type="file" accept="image/*" class="hidden" @change="handleOmrFileChange">
-      <input ref="recognizeInput" type="file" accept="image/*" class="hidden" @change="handleRecognizeChange">
-
-      <i class="fa-solid fa-table-cells absolute right-1 bottom-1 text-8xl text-white/10 pointer-events-none"></i>
-    </div>
+    </template>
 
     <!-- 在线涂卡纸交互入口 (当 activeSubMode === 'online') -->
     <OmrOnlineSheet v-else />
@@ -234,6 +250,7 @@ import { compressImage } from '../../utils/imageCompressor';
 import { parseAnswerKeyText } from '../../utils/answerParser';
 import { useRouter } from 'vue-router';
 import OmrOnlineSheet from './OmrOnlineSheet.vue';
+import OmrPaperTimer from './OmrPaperTimer.vue';
 
 const omrStore = useOmrStore();
 const configStore = useConfigStore();
