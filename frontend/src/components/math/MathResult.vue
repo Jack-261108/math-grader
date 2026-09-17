@@ -32,6 +32,43 @@
       </div>
     </div>
 
+    <!-- ⏱️ 速算做题配速与段位画像卡片 -->
+    <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm space-y-3">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+        <div class="flex items-center space-x-1.5">
+          <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+          <h3 class="font-bold text-xs text-slate-800">速算心算配速与段位画像</h3>
+        </div>
+        <span class="text-[11px] font-bold px-2 py-0.5 rounded-full border" :class="speedBadgeClass">
+          {{ speedBadgeText }}
+        </span>
+      </div>
+
+      <div class="grid grid-cols-2 gap-2 text-xs">
+        <div class="bg-slate-50 p-2.5 rounded-xl border border-slate-200/70">
+          <div class="text-[10px] text-slate-400">实测单题平均耗时</div>
+          <div class="text-base font-bold text-slate-800 mt-0.5 font-mono">
+            {{ secPerItem }} <span class="text-xs font-normal text-slate-500">秒/题</span>
+          </div>
+          <div class="text-[10px] text-slate-400 mt-0.5">全卷用时 {{ mathStore.resultData.summary?.time_str || '23分18秒' }}</div>
+        </div>
+
+        <div class="bg-emerald-50/60 p-2.5 rounded-xl border border-emerald-200/60">
+          <div class="text-[10px] text-emerald-600 font-medium">行测实战标准标尺</div>
+          <div class="text-base font-bold text-emerald-700 mt-0.5 font-mono">
+            ≤ 15.0 <span class="text-xs font-normal text-emerald-600">秒/题</span>
+          </div>
+          <div class="text-[10px] text-emerald-600 mt-0.5">资料分析标准答题速度</div>
+        </div>
+      </div>
+
+      <!-- 配速评价与建议 -->
+      <div v-if="mathStore.resultData.diagnosis?.speed_advice" class="text-[11px] text-slate-600 bg-slate-50/80 p-2.5 rounded-xl border border-slate-200/70 leading-relaxed flex items-start space-x-1.5">
+        <i class="fa-solid fa-stopwatch text-emerald-600 mt-0.5 shrink-0"></i>
+        <span><b>名师配速建议</b>: {{ mathStore.resultData.diagnosis.speed_advice }}</span>
+      </div>
+    </div>
+
     <!-- 标注图片展示区域 -->
     <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm space-y-3">
       <div class="flex items-center justify-between">
@@ -131,6 +168,32 @@ const currentImageUrl = computed(() => {
     return mathStore.resultData?.orig_url || '';
   }
   return mathStore.resultData?.scan_url || '';
+});
+
+const secPerItem = computed(() => {
+  const d = mathStore.resultData?.diagnosis;
+  if (d && d.sec_per_item && d.sec_per_item > 0) return d.sec_per_item;
+  const total = mathStore.resultData?.summary?.total || 0;
+  return total > 0 ? (23 * 60 / total).toFixed(1) : '18.0';
+});
+
+const speedLevel = computed(() => {
+  return mathStore.resultData?.diagnosis?.speed_level || '良好';
+});
+
+const speedBadgeText = computed(() => {
+  const lvl = speedLevel.value;
+  if (lvl === '极速') return '⚡ 极速神算手';
+  if (lvl === '良好') return '🎯 黄金标准配速';
+  if (lvl === '偏慢') return '⏳ 稳健深算型';
+  return '标准配速';
+});
+
+const speedBadgeClass = computed(() => {
+  const lvl = speedLevel.value;
+  if (lvl === '极速') return 'bg-blue-50 text-blue-700 border-blue-200';
+  if (lvl === '良好') return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+  return 'bg-amber-50 text-amber-700 border-amber-200';
 });
 
 function handleRetry() {

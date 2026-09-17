@@ -1,10 +1,11 @@
 import { defineStore } from 'pinia';
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import { gradeMath } from '../api/math';
 import { getHistoryDetail } from '../api/history';
 import { useConfigStore } from './config';
 import { useModalStore } from './modal';
 import { compressImage } from '../utils/imageCompressor';
+import { formatTimerSeconds, formatSecondsToChinese } from '../constants/examTiming';
 
 export const useMathStore = defineStore('math', () => {
   const configStore = useConfigStore();
@@ -15,6 +16,91 @@ export const useMathStore = defineStore('math', () => {
   const timeStr = ref('23分18秒');
   const resultData = ref(null);
   const activeImageTab = ref('scan'); // 'scan' | 'orig'
+
+  // ⏱️ 速算计时器系统 (秒表 / 倒计时)
+  const timerMode = ref('stopwatch'); // 'stopwatch' | 'countdown'
+  const timerStatus = ref('idle'); // 'idle' | 'running' | 'paused' | 'finished'
+  const timeElapsed = ref(0);
+  const countdownTargetMinutes = ref(20);
+  const timeRemaining = ref(20 * 60);
+  let mathTimerInterval = null;
+
+  const formattedTimer = computed(() => {
+    if (timerMode.value === 'countdown') {
+      return formatTimerSeconds(timeRemaining.value);
+    }
+    return formatTimerSeconds(timeElapsed.value);
+  });
+
+  const isCountdownCritical = computed(() => {
+    return timerMode.value === 'countdown' && timeRemaining.value > 0 && timeRemaining.value <= 180;
+  });
+
+  function tickMathTimer() {
+    timeElapsed.value++;
+    if (timerMode.value === 'countdown') {
+      if (timeRemaining.value > 0) {
+        timeRemaining.value--;
+      } else {
+        timerStatus.value = 'finished';
+        pauseTimer();
+        timeStr.value = formatSecondsToChinese(timeElapsed.value);
+        return;
+      }
+    }
+  }
+
+  function startTimer() {
+    if (timerMode.value === 'countdown') {
+      if (timeRemaining.value <= 0) {
+        timeRemaining.value = countdownTargetMinutes.value * 60;
+      }
+    }
+    timerStatus.value = 'running';
+    if (mathTimerInterval) clearInterval(mathTimerInterval);
+    mathTimerInterval = setInterval(tickMathTimer, 1000);
+  }
+
+  function pauseTimer() {
+    if (mathTimerInterval) {
+      clearInterval(mathTimerInterval);
+      mathTimerInterval = null;
+    }
+    if (timerStatus.value === 'running') {
+      timerStatus.value = 'paused';
+    }
+  }
+
+  function resumeTimer() {
+    if (timerStatus.value === 'paused' || timerStatus.value === 'idle') {
+      timerStatus.value = 'running';
+      if (mathTimerInterval) clearInterval(mathTimerInterval);
+      mathTimerInterval = setInterval(tickMathTimer, 1000);
+    }
+  }
+
+  function stopTimer() {
+    pauseTimer();
+    timerStatus.value = 'finished';
+    if (timeElapsed.value > 0) {
+      timeStr.value = formatSecondsToChinese(timeElapsed.value);
+    }
+  }
+
+  function resetTimer() {
+    pauseTimer();
+    timerStatus.value = 'idle';
+    timeElapsed.value = 0;
+    timeRemaining.value = countdownTargetMinutes.value * 60;
+  }
+
+  function setCountdownMinutes(mins) {
+    countdownTargetMinutes.value = mins;
+    timeRemaining.value = mins * 60;
+    if (timerStatus.value === 'idle') {
+      timeElapsed.value = 0;
+    }
+  }
 
   let stepTimer = null;
 
@@ -44,6 +130,10 @@ export const useMathStore = defineStore('math', () => {
 
     isLoading.value = true;
     startStepAnimation();
+
+    if (timerStatus.value === 'running') {
+      stopTimer();
+    }
 
     try {
       const uploadFile = await compressImage(file, 2000, 0.85);
@@ -79,6 +169,7 @@ export const useMathStore = defineStore('math', () => {
   function reset() {
     resultData.value = null;
     activeImageTab.value = 'scan';
+    resetTimer();
   }
 
   return {
@@ -87,6 +178,19 @@ export const useMathStore = defineStore('math', () => {
     timeStr,
     resultData,
     activeImageTab,
+    timerMode,
+    timerStatus,
+    timeElapsed,
+    countdownTargetMinutes,
+    timeRemaining,
+    formattedTimer,
+    isCountdownCritical,
+    startTimer,
+    pauseTimer,
+    resumeTimer,
+    stopTimer,
+    resetTimer,
+    setCountdownMinutes,
     submitGrade,
     restoreTask,
     reset
