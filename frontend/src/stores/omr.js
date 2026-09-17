@@ -154,6 +154,22 @@ export const useOmrStore = defineStore('omr', () => {
     currentSections.value = JSON.parse(JSON.stringify(pData.sections));
   }
 
+  function adaptSectionsToAnswerCount(maxQ) {
+    if (!maxQ || maxQ <= 0) return;
+    const count = parseInt(maxQ, 10);
+    const newPreset = {
+      name: `自适应模考 (${count}题 / ${count}分)`,
+      total_questions: count,
+      full_score: Number(count.toFixed(2)),
+      sections: [
+        { id: "practice", name: "微模考卷", start_q: 1, end_q: count, score_per_q: 1.0 }
+      ]
+    };
+    presets.value.custom_adaptive = newPreset;
+    currentPresetId.value = 'custom_adaptive';
+    currentSections.value = JSON.parse(JSON.stringify(newPreset.sections));
+  }
+
   function setOnlineAnswer(qNum, choice) {
     if (!choice) {
       delete onlineAnswers.value[qNum];
@@ -384,6 +400,7 @@ export const useOmrStore = defineStore('omr', () => {
     correctionDiffKeys,
     fetchServerPresets,
     selectPreset,
+    adaptSectionsToAnswerCount,
     setOnlineAnswer,
     setCorrectionAnswer,
     resetCorrections,

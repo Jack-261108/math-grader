@@ -149,8 +149,24 @@
         ></textarea>
 
         <div class="flex items-center justify-between text-[11px] text-slate-400">
-          <span>已录入标准答案: <b class="text-blue-600">{{ parsedAnswerCount }}</b> 题</span>
-          <span>用时: <input type="text" v-model="omrStore.timeStr" class="border border-slate-200 rounded px-1.5 py-0.5 w-20 text-center text-xs font-mono text-slate-700"></span>
+          <div class="flex items-center space-x-1.5 flex-wrap gap-y-1">
+            <span>已录入标准答案: <b class="text-blue-600">{{ parsedAnswerCount }}</b> 题</span>
+            <span v-if="parsedMaxQ > 0 && isSheetSyncedWithAnswers" class="text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded text-[10px] font-semibold flex items-center space-x-1">
+              <i class="fa-solid fa-circle-check text-[9px]"></i>
+              <span>答题卡已自适应 ({{ omrStore.totalQuestions }}题)</span>
+            </span>
+            <button
+              v-else-if="parsedMaxQ > 0 && !isSheetSyncedWithAnswers"
+              type="button"
+              @click="handleSyncToAnswerCount"
+              class="text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-2 py-0.5 rounded text-[10px] font-bold flex items-center space-x-1 transition cursor-pointer"
+              title="点击将下方答题卡同步为答案题数"
+            >
+              <i class="fa-solid fa-arrows-rotate text-[9px]"></i>
+              <span>答题卡当前{{ omrStore.totalQuestions }}题 · 点击同步为{{ parsedMaxQ }}题</span>
+            </button>
+          </div>
+          <span class="shrink-0">用时: <input type="text" v-model="omrStore.timeStr" class="border border-slate-200 rounded px-1.5 py-0.5 w-20 text-center text-xs font-mono text-slate-700"></span>
         </div>
       </div>
     </div>
@@ -210,11 +226,12 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { useOmrStore } from '../../stores/omr';
 import { useConfigStore } from '../../stores/config';
 import { parseAnswerImage } from '../../api/omr';
 import { compressImage } from '../../utils/imageCompressor';
+import { parseAnswerKeyText } from '../../utils/answerParser';
 import { useRouter } from 'vue-router';
 import OmrOnlineSheet from './OmrOnlineSheet.vue';
 
@@ -229,11 +246,38 @@ const omrCameraInput = ref(null);
 const omrAlbumInput = ref(null);
 const recognizeInput = ref(null);
 
-const parsedAnswerCount = computed(() => {
-  const text = omrStore.answerKey || '';
-  const clean = text.replace(/[^A-Za-z]/g, '');
-  return clean.length;
+const parsedAnswerInfo = computed(() => {
+  return parseAnswerKeyText(omrStore.answerKey || '');
 });
+
+const parsedAnswerCount = computed(() => parsedAnswerInfo.value.count);
+const parsedMaxQ = computed(() => parsedAnswerInfo.value.maxQ);
+
+const isSheetSyncedWithAnswers = computed(() => {
+  if (parsedMaxQ.value <= 0) return true;
+  return omrStore.totalQuestions === parsedMaxQ.value;
+});
+
+// 监听答案输入防抖自适应答题卡题数
+let debounceTimer = null;
+watch(() => omrStore.answerKey, (newVal) => {
+  if (debounceTimer) clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(() => {
+    const info = parseAnswerKeyText(newVal || '');
+    if (info.maxQ > 0) {
+      // 当解析出有效题数且与当前答题卡题数不一致时，自动自适应答题卡
+      if (omrStore.totalQuestions !== info.maxQ) {
+        omrStore.adaptSectionsToAnswerCount(info.maxQ);
+      }
+    }
+  }, 300);
+});
+
+function handleSyncToAnswerCount() {
+  if (parsedMaxQ.value > 0) {
+    omrStore.adaptSectionsToAnswerCount(parsedMaxQ.value);
+  }
+}
 
 function triggerAnswerImage() {
   ansImgInput.value?.click();
@@ -251,10 +295,13 @@ async function handleAnswerImgChange(e) {
     const res = await parseAnswerImage(fd);
     if (res.formatted_text) {
       omrStore.answerKey = res.formatted_text;
-      if (res.suggested_preset) {
+      const info = parseAnswerKeyText(res.formatted_text);
+      if (info.maxQ > 0) {
+        omrStore.adaptSectionsToAnswerCount(info.maxQ);
+      } else if (res.suggested_preset) {
         omrStore.selectPreset(res.suggested_preset);
       }
-      alert(`🎉 成功识别提取 ${res.total_detected} 道题标准答案！已自动回填。`);
+      alert(`🎉 成功识别提取 ${res.total_detected} 道题标准答案！已自动自适应答题卡为 ${info.maxQ || res.total_detected} 题。`);
     } else {
       alert('未能从图片中解析出有效题号和答案，请确认图片清晰度。');
     }
