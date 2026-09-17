@@ -48,7 +48,7 @@ output/*
 *.log
 
 # Local test datasets & extracted pdfs
-data/
+/data/
 
 # Node.js & Frontend
 frontend/node_modules/
