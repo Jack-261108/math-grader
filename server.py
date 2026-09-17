@@ -9,7 +9,7 @@ import logging
 from datetime import datetime
 import uuid
 import socket
-from typing import Optional
+from typing import Optional, Dict, Any
 from urllib.parse import urlparse
 import cv2
 import numpy as np
@@ -392,13 +392,14 @@ async def api_omr_recognize(
         preset = omr_judge.DEFAULT_PRESETS.get(preset_id or "guokao_135", omr_judge.DEFAULT_PRESETS["guokao_135"])
         total_questions = max((s["end_q"] for s in preset["sections"]), default=135)
 
-        student_answers, grid_layout = omr_engine.recognize_omr_sheet(
+        student_answers, grid_layout, hybrid_stats = omr_engine.hybrid_recognize_omr_sheet(
             img,
             expected_total_q=total_questions,
             model=model,
             base_url=api_base_url,
             api_key=api_key,
-            return_layout=True
+            return_layout=True,
+            return_stats=True
         )
 
         student_answers = omr_annotator.refine_student_answers_with_cv(
@@ -408,13 +409,19 @@ async def api_omr_recognize(
         )
 
         elapsed_ms = int((time.time() - t_start) * 1000)
-        logger.info(f"[OMR-Recognize] 填涂预审完成: task_id={task_id}, 识别作答题数={len(student_answers)}/{total_questions}, 耗时={elapsed_ms}ms")
+        logger.info(
+            f"[OMR-Recognize] 填涂预审完成: task_id={task_id}, 识别题数={len(student_answers)}/{total_questions}, "
+            f"模式={hybrid_stats.get('mode')}, 本地直出={hybrid_stats.get('local_resolved')}题, "
+            f"靶向审验={hybrid_stats.get('reviewed_count')}题, Token节约率={hybrid_stats.get('token_saved_pct')}%, "
+            f"耗时={elapsed_ms}ms"
+        )
         return {
             "status": "success",
             "raw_task_id": task_id,
             "student_answers": student_answers,
             "total_detected": len(student_answers),
-            "message": f"成功识别 {len(student_answers)} 道题目的填涂作答！"
+            "hybrid_stats": hybrid_stats,
+            "message": f"成功识别 {len(student_answers)} 道题目的填涂作答 (Token节约 {hybrid_stats.get('token_saved_pct', 0)}%)！"
         }
     except HTTPException:
         raise
@@ -460,6 +467,8 @@ async def api_grade_omr(
     ans_key_str = answer_key if isinstance(answer_key, str) else str(getattr(answer_key, "default", ""))
 
     mode = "图片识别" if (file is not None and getattr(file, "filename", None)) else ("在线作答" if (stu_ans_str and stu_ans_str.strip()) else ("Mock模拟" if mock == 1 else "重判纠错"))
+    hybrid_stats: Optional[Dict[str, Any]] = None
+    grid_layout: Optional[Dict[str, Any]] = None
     logger.info(f"[OMR-Grade] 收到答题卡判分请求: task_id={task_id}, mode={mode}, preset={preset_id_str or 'guokao_135'}, raw_task_id={effective_raw_task_id or 'none'}")
     try:
         img = None
@@ -543,16 +552,17 @@ async def api_grade_omr(
             if img is None:
                 raise HTTPException(status_code=400, detail="答题卡图片格式不正确，无法读取")
             check_user_byok_config(api_base_url, api_key)
-            student_answers, grid_layout = omr_engine.recognize_omr_sheet(
+            student_answers, grid_layout, hybrid_stats = omr_engine.hybrid_recognize_omr_sheet(
                 img,
                 expected_total_q=total_questions,
                 model=model,
                 base_url=api_base_url,
                 api_key=api_key,
-                return_layout=True
+                return_layout=True,
+                return_stats=True
             )
 
-        # 结合物理石墨反差与网格坐标自适应校准
+        # 结合物理石墨反差与网格坐标自适应校准（最后一道物理双保险）
         if img is not None and student_answers and not (stu_ans_str and stu_ans_str.strip()):
             student_answers = omr_annotator.refine_student_answers_with_cv(
                 img,
@@ -567,6 +577,8 @@ async def api_grade_omr(
             sections_config=sections_config,
             custom_time_str=time_str_val
         )
+        if hybrid_stats:
+            judged_data.setdefault("summary", {})["hybrid_stats"] = hybrid_stats
 
         # 5. 渲染批注答题卡全景图（在用户上传的真实答题卡原图上红绿批改对错；若纯在线做题未传图，则生成高保真仿真批注卡）
         if img is not None:

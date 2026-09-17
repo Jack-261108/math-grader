@@ -71,6 +71,32 @@
       </div>
     </div>
 
+    <!-- ⚡ 混合 OMR 极速识别成效卡片 (如果包含混合指标) -->
+    <div
+      v-if="hybridStat"
+      class="bg-gradient-to-r from-blue-50/90 via-indigo-50/70 to-emerald-50/70 border border-blue-200/80 rounded-2xl px-3.5 py-2.5 flex items-center justify-between text-xs text-slate-700 shadow-2xs"
+    >
+      <div class="flex items-center space-x-2 min-w-0">
+        <span class="w-6 h-6 rounded-lg bg-blue-600 text-white flex items-center justify-center text-xs shrink-0 shadow-2xs">
+          <i class="fa-solid fa-bolt"></i>
+        </span>
+        <div class="min-w-0">
+          <div class="font-bold text-blue-950 flex items-center space-x-1.5 flex-wrap">
+            <span>CV + 多模态混合极速批改</span>
+            <span class="text-[10px] px-1.5 py-0.2 rounded-full bg-emerald-100 text-emerald-800 font-bold">
+              节约 Token {{ hybridStat.token_saved_pct }}%
+            </span>
+          </div>
+          <p class="text-[10px] text-slate-500 truncate mt-0.5">
+            本地直出: <b>{{ hybridStat.local_resolved }}</b> 题 · 靶向审验: <b>{{ hybridStat.reviewed_count }}</b> 题 · 耗时: <b>{{ hybridStat.elapsed_ms }}ms</b>
+          </p>
+        </div>
+      </div>
+      <span class="text-[10px] text-blue-700 font-bold bg-white/80 px-2 py-1 rounded-xl border border-blue-100 shrink-0 ml-2 hidden sm:inline">
+        准确率双重互验
+      </span>
+    </div>
+
     <!-- 结果页三大核心维度 Segmented Tabs -->
     <div class="sticky top-2 z-30 bg-white/95 backdrop-blur-md p-1 rounded-2xl border border-slate-200/90 shadow-sm flex items-center gap-1 text-xs">
       <button
@@ -253,6 +279,7 @@
 </template>
 
 <script setup>
+import { computed } from 'vue';
 import { useOmrStore } from '../../stores/omr';
 import { useModalStore } from '../../stores/modal';
 import { useRouter } from 'vue-router';
@@ -262,6 +289,8 @@ import OmrCorrectionDrawer from './OmrCorrectionDrawer.vue';
 const omrStore = useOmrStore();
 const modalStore = useModalStore();
 const router = useRouter();
+
+const hybridStat = computed(() => omrStore.resultData?.summary?.hybrid_stats || null);
 
 function getAccBarClass(acc) {
   if (acc >= 80) return 'bg-emerald-500';
