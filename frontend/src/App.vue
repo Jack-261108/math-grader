@@ -23,13 +23,14 @@
     <!-- 底部返回顶部 -->
     <BackToTop />
 
-    <!-- 6 个全局模态弹窗 -->
+    <!-- 全局模态弹窗 -->
     <SettingsModal />
     <HistoryModal />
     <AiTutorModal />
     <QuestionModal />
     <FullscreenViewer />
     <PrintModal />
+    <MathTargetedPracticeModal />
   </div>
 </template>
 
@@ -49,6 +50,7 @@ import AiTutorModal from './components/modals/AiTutorModal.vue';
 import QuestionModal from './components/modals/QuestionModal.vue';
 import FullscreenViewer from './components/modals/FullscreenViewer.vue';
 import PrintModal from './components/modals/PrintModal.vue';
+import MathTargetedPracticeModal from './components/modals/MathTargetedPracticeModal.vue';
 
 import { useMathStore } from './stores/math';
 import { useOmrStore } from './stores/omr';

@@ -59,6 +59,17 @@ export const useModalStore = defineStore('modal', () => {
     isPrintModalOpen.value = false;
   }
 
+  // Targeted Practice Modal (速算靶向自适应强化练)
+  const isTargetedPracticeOpen = ref(false);
+  const targetedPracticeMeta = ref({ weaknessType: 'borrow_error', weaknessName: '' });
+  function openTargetedPractice(weaknessType = 'borrow_error', weaknessName = '') {
+    targetedPracticeMeta.value = { weaknessType, weaknessName };
+    isTargetedPracticeOpen.value = true;
+  }
+  function closeTargetedPractice() {
+    isTargetedPracticeOpen.value = false;
+  }
+
   return {
     isSettingsOpen,
     openSettings,
@@ -81,6 +92,10 @@ export const useModalStore = defineStore('modal', () => {
     isPrintModalOpen,
     printSource,
     openPrint,
-    closePrint
+    closePrint,
+    isTargetedPracticeOpen,
+    targetedPracticeMeta,
+    openTargetedPractice,
+    closeTargetedPractice
   };
 });

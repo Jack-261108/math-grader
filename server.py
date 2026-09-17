@@ -44,6 +44,7 @@ import omr_annotator # type: ignore
 import ai_tutor      # type: ignore
 import vision_ocr     # type: ignore
 import wrong_book_db # type: ignore
+import adaptive_math_generator # type: ignore
 import json
 import urllib.request
 from urllib.error import HTTPError
@@ -310,6 +311,24 @@ async def api_grade(
     except Exception as e:
         logger.exception(f"[Math-Grade] 批改处理异常: task_id={task_id}, error={str(e)}")
         raise HTTPException(status_code=500, detail=f"批改处理失败: {str(e)}")
+
+
+@app.post("/api/math/generate-targeted-exercises")
+async def api_generate_targeted_exercises(
+    weakness_type: Optional[str] = Form("borrow_error"),
+    count: int = Form(20),
+    weakness_name: Optional[str] = Form("")
+):
+    """根据考生速算诊断薄弱项，即时动态生成 20 道同型算式强化练习题"""
+    try:
+        wt = str(weakness_type) if (weakness_type and isinstance(weakness_type, str)) else "borrow_error"
+        cnt = int(count) if (isinstance(count, (int, str)) and str(count).isdigit()) else 20
+        wn = str(weakness_name) if (weakness_name and isinstance(weakness_name, str)) else ""
+        res = adaptive_math_generator.generate_targeted_exercises(wt, count=cnt, weakness_name=wn)
+        return {"status": "success", **res}
+    except Exception as e:
+        logger.exception(f"[Math-Adaptive] 生成强化练习题失败: {e}")
+        raise HTTPException(status_code=500, detail=f"生成强化算式失败: {str(e)}")
 
 
 @app.get("/api/omr/presets")

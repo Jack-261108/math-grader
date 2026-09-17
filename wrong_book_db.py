@@ -92,8 +92,54 @@ except Exception as e:
 
 
 # ============================================================
-# 考点分类器与错因打标
 # ============================================================
+# 题目规范化、考点分类器与错因打标
+# ============================================================
+
+def normalize_math_item(item: Dict[str, Any]) -> Dict[str, Any]:
+    """补齐并规范化速算题目字段 (expression, expected, op_symbol 等)"""
+    it = dict(item)
+    op = str(it.get("op_type") or "add").lower()
+    sym = "×" if op in ["mul", "*", "乘"] else ("÷" if op in ["div", "/", "除"] else ("+" if op in ["add", "+", "加"] else "-"))
+    it["op_symbol"] = sym
+    it["op_type"] = op
+    a = it.get("a")
+    b = it.get("b")
+
+    # 优先使用已有的规范算式，若缺失则从 a、b、op 智能组装
+    if not it.get("expression") or str(it.get("expression")).strip() in ["", "None"]:
+        if a is not None and b is not None:
+            it["expression"] = f"{a} {sym} {b}"
+        elif it.get("expr"):
+            it["expression"] = str(it["expr"])
+        else:
+            r = it.get("row_num", 1)
+            c = it.get("col_idx", 1)
+            it["expression"] = f"算式 #{r}-{c}"
+
+    if it.get("expected") is None:
+        if it.get("expected_val") is not None:
+            it["expected"] = it["expected_val"]
+        elif a is not None and b is not None:
+            try:
+                if sym == "+": it["expected"] = a + b
+                elif sym == "-": it["expected"] = a - b
+                elif sym == "×": it["expected"] = a * b
+                elif sym == "÷" and b != 0: it["expected"] = int(a / b)
+            except Exception:
+                pass
+    return it
+
+
+def normalize_omr_item(item: Dict[str, Any]) -> Dict[str, Any]:
+    """补齐并规范化 OMR 题目字段 (std_choice, student_choice 等)"""
+    it = dict(item)
+    if not it.get("std_choice"):
+        it["std_choice"] = it.get("standard_choice") or it.get("std_ans") or ""
+    if not it.get("student_choice"):
+        it["student_choice"] = it.get("student_ans") or ""
+    return it
+
 
 def categorize_topic(source_type: str, item: Dict[str, Any]) -> Tuple[str, str, str]:
     """智能推导题目所属的模块ID、模块名称与二级核心考点。
@@ -101,15 +147,22 @@ def categorize_topic(source_type: str, item: Dict[str, Any]) -> Tuple[str, str, 
     返回: (module_id, module_name, topic_category)
     """
     if source_type == "math":
-        expr = str(item.get("expression") or item.get("expr") or "").strip()
-        err_type = str(item.get("error_type") or "")
+        it = normalize_math_item(item)
+        expr = str(it.get("expression") or "").strip()
+        op = str(it.get("op_type") or "").lower()
+        err_type = str(it.get("error_type") or "").lower()
+        advice = str(it.get("advice") or it.get("tip") or "").lower()
 
-        if "÷" in expr or "/" in expr or "div" in err_type:
+        if "÷" in expr or "/" in expr or "div" in op or "除" in op or "除法" in err_type:
             return "math_speed", "速算技巧", "速算-除法截位直除"
-        elif "×" in expr or "*" in expr or "mul" in err_type:
+        elif "×" in expr or "*" in expr or "mul" in op or "乘" in op or "乘法" in err_type:
             return "math_speed", "速算技巧", "速算-乘法拆分与尾数法"
-        elif "+" in expr or "-" in expr or "borrow" in err_type or "carry" in err_type:
+        elif "-" in expr or "sub" in op or "减" in op or "borrow" in err_type or "借位" in advice or "退位" in advice or "减法" in advice:
+            if "borrow" in err_type or "借位" in advice or "退位" in advice:
+                return "math_speed", "速算技巧", "速算-减法退位借位"
             return "math_speed", "速算技巧", "速算-高位直加直减与凑整"
+        elif "+" in expr or "add" in op or "加" in op or "carry" in err_type or "进位" in advice:
+            return "math_speed", "速算技巧", "速算-加法进位与高位直加"
         elif "%" in expr:
             return "math_speed", "速算技巧", "速算-两期比重与基期换算"
         else:
@@ -233,12 +286,22 @@ def compute_next_review_date(stage: int, from_date: Optional[datetime] = None) -
 def compute_question_uid(source_type: str, item: Dict[str, Any]) -> str:
     """生成错题唯一特征指纹哈希（确保同题二次做错自动叠加快照）"""
     if source_type == "math":
-        expr = str(item.get("expression") or item.get("expr") or "").strip()
-        key = f"math:{expr}"
+        it = normalize_math_item(item)
+        expr = str(it.get("expression") or "").strip()
+        if expr and expr != "速算算式":
+            key = f"math:{expr}"
+        else:
+            a = it.get("a")
+            b = it.get("b")
+            op = it.get("op_type", "")
+            r = it.get("row_num", 0)
+            c = it.get("col_idx", 0)
+            key = f"math:{op}:{a}:{b}:{r}:{c}"
     else:
-        q_num = item.get("q_num", 0)
-        stem = str(item.get("stem") or "").strip()
-        sec = item.get("section_id") or ""
+        it = normalize_omr_item(item)
+        q_num = it.get("q_num", 0)
+        stem = str(it.get("stem") or "").strip()
+        sec = it.get("section_id") or ""
         key = f"omr:{sec}:{q_num}:{stem[:80]}"
     return hashlib.md5(key.encode("utf-8")).hexdigest()
 
@@ -254,6 +317,11 @@ def ingest_wrong_question(
     exam_title: str = ""
 ) -> int:
     """将单道做错的题目沉淀入库（支持去重与错误次数累加）。"""
+    if source_type == "math":
+        item_data = normalize_math_item(item_data)
+    else:
+        item_data = normalize_omr_item(item_data)
+
     uid = compute_question_uid(source_type, item_data)
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     next_due = compute_next_review_date(0)
@@ -262,14 +330,14 @@ def ingest_wrong_question(
     error_tag = derive_default_error_tag(source_type, item_data)
 
     if source_type == "math":
-        title = f"速算算式: {item_data.get('expression') or item_data.get('expr')}"
-        user_ans = str(item_data.get("student_raw") or item_data.get("student_val") or "")
+        title = f"速算算式: {item_data.get('expression')}"
+        user_ans = str(item_data.get("student_raw") or item_data.get("student_val") or item_data.get("student_ans") or "")
         exp_ans = str(item_data.get("expected") or "")
     else:
         q_num = item_data.get("q_num", 1)
         title = f"{mod_name} 第 {q_num} 题"
         user_ans = str(item_data.get("student_choice") or "")
-        exp_ans = str(item_data.get("std_choice") or "")
+        exp_ans = str(item_data.get("std_choice") or item_data.get("standard_choice") or "")
 
     # 包装完整快照 JSON
     item_snapshot = dict(item_data)
@@ -285,7 +353,7 @@ def ingest_wrong_question(
         if existing:
             q_id = existing["id"]
             new_cnt = existing["wrong_count"] + 1
-            # 重新做错，重置回待复习状态
+            # 重新做错，重置回待复习状态并同步最新考点与标准答案
             cursor.execute("""
             UPDATE wrong_questions
             SET wrong_count = ?,
@@ -293,12 +361,17 @@ def ingest_wrong_question(
                 review_stage = 0,
                 mastery_streak = 0,
                 user_answer = ?,
+                expected_answer = ?,
+                topic_category = ?,
+                module_id = ?,
+                module_name = ?,
+                title = ?,
                 content_json = ?,
                 source_task_id = ?,
                 next_review_at = ?,
                 updated_at = ?
             WHERE id = ?
-            """, (new_cnt, user_ans, content_json_str, source_task_id, next_due, now_str, q_id))
+            """, (new_cnt, user_ans, exp_ans, topic, mod_id, mod_name, title, content_json_str, source_task_id, next_due, now_str, q_id))
             conn.commit()
             return q_id
         else:
@@ -466,6 +539,16 @@ def query_wrong_questions(
                 it["content"] = json.loads(it["content_json"])
             except Exception:
                 it["content"] = {}
+
+            if it["source_type"] == "math":
+                it["content"] = normalize_math_item(it["content"])
+                if not it.get("expected_answer"):
+                    it["expected_answer"] = str(it["content"].get("expected") or "")
+            else:
+                it["content"] = normalize_omr_item(it["content"])
+                if not it.get("expected_answer"):
+                    it["expected_answer"] = str(it["content"].get("std_choice") or it["content"].get("standard_choice") or "")
+
             it["is_due"] = bool(it["status"] == "reviewing" and it["next_review_at"] <= today_str)
             questions.append(it)
 
@@ -624,6 +707,11 @@ def generate_weakness_practice_sheet(
                 c = json.loads(it["content_json"])
             except Exception:
                 c = {}
+
+            if it["source_type"] == "math":
+                c = normalize_math_item(c)
+            else:
+                c = normalize_omr_item(c)
 
             sheet_items.append({
                 "sheet_q_num": idx,

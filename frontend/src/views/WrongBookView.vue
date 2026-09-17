@@ -196,7 +196,7 @@
 
             <!-- 题干或算式 -->
             <div v-if="q.source_type === 'math'" class="p-3 bg-slate-50 rounded-xl font-mono text-lg font-bold text-slate-900 flex items-center space-x-2">
-              <span>{{ q.content?.expression }} = </span>
+              <span>{{ formatMathExpression(q) }} = </span>
               <input
                 type="text"
                 v-model="userReviewInputs[q.id]"
@@ -437,7 +437,7 @@
           <!-- 题目题干 -->
           <div class="font-medium text-slate-900 leading-relaxed">
             <span v-if="q.source_type === 'math'" class="font-mono font-bold text-base text-purple-900">
-              {{ q.content?.expression }} = ?
+              {{ formatMathExpression(q) }} = ?
             </span>
             <span v-else>{{ q.content?.stem || q.title }}</span>
           </div>
@@ -689,6 +689,25 @@ function getErrorTagLabel(tag) {
     unfamiliar: '考点生疏'
   };
   return map[tag] || '概念混淆';
+}
+
+function formatMathExpression(q) {
+  if (!q) return '速算题目';
+  const c = q.content || {};
+  if (c.expression && String(c.expression).trim() !== '' && String(c.expression) !== 'None') {
+    return c.expression;
+  }
+  const a = c.a;
+  const b = c.b;
+  const op = c.op_type || 'add';
+  const sym = c.op_symbol || (op === 'mul' ? '×' : (op === 'div' ? '÷' : (op === 'add' ? '+' : '-')));
+  if (a !== undefined && b !== undefined) {
+    return `${a} ${sym} ${b}`;
+  }
+  if (q.title && q.title.includes(':')) {
+    return q.title.split(':')[1].trim();
+  }
+  return '速算题目';
 }
 
 async function quickGenerate(mode) {
