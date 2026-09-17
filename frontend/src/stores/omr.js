@@ -6,6 +6,7 @@ import { useConfigStore } from './config';
 import { useModalStore } from './modal';
 import { compressImage } from '../utils/imageCompressor';
 import { DEFAULT_EXAM_DURATION_MINUTES, formatTimerSeconds, formatSecondsToChinese, playExamChime, speakExamBroadcast, getSectionBenchmark } from '../constants/examTiming';
+import { globalWakeLock } from '../utils/wakeLockHelper';
 
 const FALLBACK_PRESETS = {
   guokao_135: {
@@ -219,29 +220,19 @@ export const useOmrStore = defineStore('omr', () => {
     return currentSections.value.find(s => num >= s.start_q && num <= s.end_q) || null;
   }
 
-  // 防息屏常亮控制 (Web Screen Wake Lock API)
+  // 防息屏常亮控制 (基于全局高可用常亮控制器，切屏切回自动重新激活)
+  globalWakeLock.onStatusChange((active) => {
+    isScreenWakeLocked.value = active;
+  });
+
   async function requestScreenWakeLock() {
-    if (typeof navigator !== 'undefined' && 'wakeLock' in navigator) {
-      try {
-        wakeLockSentinel = await navigator.wakeLock.request('screen');
-        isScreenWakeLocked.value = true;
-        wakeLockSentinel.addEventListener('release', () => {
-          isScreenWakeLocked.value = false;
-        });
-      } catch (err) {
-        isScreenWakeLocked.value = false;
-      }
-    }
+    isScreenWakeLocked.value = true;
+    await globalWakeLock.acquire();
   }
 
   async function releaseScreenWakeLock() {
-    if (wakeLockSentinel) {
-      try {
-        await wakeLockSentinel.release();
-        wakeLockSentinel = null;
-      } catch (e) {}
-      isScreenWakeLocked.value = false;
-    }
+    isScreenWakeLocked.value = false;
+    await globalWakeLock.release();
   }
 
   function triggerSoundAlert(type, text = "") {

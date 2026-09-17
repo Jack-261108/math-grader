@@ -443,8 +443,21 @@
               <h4 class="font-bold text-sm sm:text-base tracking-wide text-slate-100 truncate">
                 公考行测全真模考伴考中控
               </h4>
-              <div class="text-[10px] text-slate-400 font-mono mt-0.5">
-                {{ omrStore.paperTimerMode === 'stopwatch' ? '正向秒表计时' : `${omrStore.examDurationMinutes}分钟标准限时` }} · 常亮防息屏
+              <div class="flex items-center space-x-2 text-[10px] text-slate-400 font-mono mt-0.5">
+                <span>{{ omrStore.paperTimerMode === 'stopwatch' ? '正向秒表' : `${omrStore.examDurationMinutes}m标准限时` }}</span>
+                <span>·</span>
+                <button
+                  type="button"
+                  @click="toggleWakeLock"
+                  class="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold border transition cursor-pointer"
+                  :class="omrStore.isScreenWakeLocked
+                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30 shadow-2xs'
+                    : 'bg-white/10 text-slate-300 border-white/15 hover:bg-white/20'"
+                  title="点击可手动切换屏幕常亮防息屏"
+                >
+                  <i class="fa-solid fa-sun text-[9px]" :class="omrStore.isScreenWakeLocked ? 'text-amber-300' : ''"></i>
+                  <span>{{ omrStore.isScreenWakeLocked ? '常亮防息屏中' : '常亮已关' }}</span>
+                </button>
               </div>
             </div>
           </div>

@@ -456,8 +456,21 @@
               <h4 class="font-bold text-sm sm:text-base tracking-wide text-slate-100 truncate">
                 速算竞速伴考看板
               </h4>
-              <div class="text-[10px] text-slate-400 font-mono mt-0.5">
-                计划 {{ mathStore.targetItemCount }} 题 · {{ mathStore.timerMode === 'countdown' ? `${mathStore.countdownTargetMinutes}m挑战` : '秒表' }} · 常亮防息屏
+              <div class="flex items-center space-x-2 text-[10px] text-slate-400 font-mono mt-0.5">
+                <span>计划 {{ mathStore.targetItemCount }} 题 · {{ mathStore.timerMode === 'countdown' ? `${mathStore.countdownTargetMinutes}m挑战` : '秒表' }}</span>
+                <span>·</span>
+                <button
+                  type="button"
+                  @click="toggleWakeLock"
+                  class="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold border transition cursor-pointer"
+                  :class="mathStore.isScreenWakeLocked
+                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30 shadow-2xs'
+                    : 'bg-white/10 text-slate-300 border-white/15 hover:bg-white/20'"
+                  title="点击可手动切换屏幕常亮防息屏"
+                >
+                  <i class="fa-solid fa-sun text-[9px]" :class="mathStore.isScreenWakeLocked ? 'text-amber-300' : ''"></i>
+                  <span>{{ mathStore.isScreenWakeLocked ? '常亮防息屏中' : '常亮已关' }}</span>
+                </button>
               </div>
             </div>
           </div>
