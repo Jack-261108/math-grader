@@ -729,13 +729,20 @@ async def api_get_history(
                 else:
                     summary = data.get("summary", {})
                     title = data.get("title") or "速算技巧练习"
-                    acc = summary.get("accuracy", "0%")
-                    score_str = f"正确率 {acc}"
-                    grade = summary.get("grade", "B")
-                    total_q = summary.get("total", len(data.get("items", [])))
                     correct_q = summary.get("correct", 0)
                     wrong_q = summary.get("wrong", 0)
                     unans_q = summary.get("unknown", 0)
+                    total_q = summary.get("total", len(data.get("items", [])))
+
+                    raw_acc = summary.get("accuracy_pct", summary.get("accuracy"))
+                    if raw_acc is not None:
+                        score_str = f"正确率 {raw_acc}%" if "%" not in str(raw_acc) else f"正确率 {raw_acc}"
+                    else:
+                        answered = correct_q + wrong_q
+                        calc_acc = round(correct_q / answered * 100.0, 1) if answered > 0 else 0.0
+                        score_str = f"正确率 {calc_acc}%"
+
+                    grade = summary.get("grade_level") or summary.get("grade") or summary.get("grade_badge") or "B"
                     img_url = data.get("scan_url") or f"/output/{task_id}_annotated_scan.jpg"
 
                 created_at = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M:%S")
