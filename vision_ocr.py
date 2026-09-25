@@ -72,11 +72,16 @@ OCR_PROMPT = """这是一张公考速算技巧练习表格（表格通常有表�
    - 负数要带上负号（如 -5, -7, -24）
    - 有修改划痕的以最终写出的数字为准
    - 若未作答则填 null
-3. 请严格输出如下 JSON 格式，不要包含任何额外的问候或 markdown 标记外的解释：
+3. 试卷朝向自检（关键安全项）：
+   - 请观察当前输入图像中文字与表头（'A', 'B', 'A×B' 等）的朝向：
+     * 若文字正常正立阅读（表头在上方），"is_upside_down" 填 false；
+     * 若文字呈现上下倒立（表头在下方，数字上下颠倒），"is_upside_down" 填 true。
+4. 请严格输出如下 JSON 格式，不要包含任何额外的问候或 markdown 标记外的解释：
 ```json
 {
   "sheet_title": "速算技巧练习 2023 (1)",
   "detected_type": "mul_add_sub",
+  "is_upside_down": false,
   "items": [
     {
       "row_num": 1,

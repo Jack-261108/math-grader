@@ -47,12 +47,17 @@ def detect_table_corners(img: np.ndarray, max_dim: int = 1200) -> np.ndarray:
     v_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, int(small_h / 35)))
     v_lines = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, v_kernel)
 
-    # 1. 过滤贯穿全图的孤立非表格竖线 (如相邻页边缘、装订线，高度超过 82% 图像高)
+    # 1. 过滤贯穿全图的孤立非表格竖线 (如相邻页边缘、装订线，高度超过 85% 图像高且与水平网格线几乎无交点)
     num_v, labels_v, stats_v, _ = cv2.connectedComponentsWithStats(v_lines)
     for idx in range(1, num_v):
         lh = stats_v[idx, cv2.CC_STAT_HEIGHT]
-        if lh > small_h * 0.82:
-            v_lines[labels_v == idx] = 0
+        if lh > small_h * 0.85:
+            comp_mask = (labels_v == idx).astype(np.uint8) * 255
+            intersections = cv2.bitwise_and(comp_mask, h_lines)
+            num_inter, _, _, _ = cv2.connectedComponentsWithStats(intersections)
+            # 真正的表格纵向线至少会与 15+ 条水平线相交；交点极少（少于 4 个）才判定为孤立杂线
+            if (num_inter - 1) < 4:
+                v_lines[labels_v == idx] = 0
 
     table_grid = cv2.bitwise_or(h_lines, v_lines)
 
@@ -125,7 +130,8 @@ def orient_table_corners(img: np.ndarray, corners: np.ndarray) -> np.ndarray:
 
     物理排版不变量：
     1. 21 个物理行在纵向产生约 52px (在 800x1100 评估图下) 的强烈自相关周期波峰 (横置时仅 ~0.05)；
-    2. 左侧第一列为“序号”列 (窄列)，右侧列为计算列 (宽列)，即 w_left < w_right。
+    2. 全局最窄列为左侧“序号”列 (宽度约 4%~6%)，右侧各列为计算列 (宽度约 7%~12%)；
+    3. 表头上部区域包含练习册大标题、日期等文字，外边距文字墨水密度显著高于表底空白留白区。
 
     返回：
         np.ndarray: 经过朝向纠正后的 4 个角点 [TL, TR, BR, BL] (shape 4x2)
@@ -155,35 +161,68 @@ def orient_table_corners(img: np.ndarray, corners: np.ndarray) -> np.ndarray:
         if autocorr[0] > 0:
             peak_val = float(np.max(autocorr[40:65])) / float(autocorr[0])
 
-        # 2. 竖向线条聚类：检测左列与右列宽度
+        # 2. 竖向线条聚类：检测各列宽度分布，消除边缘假峰干扰
         vk = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 40))
         v_lines = cv2.morphologyEx(th, cv2.MORPH_OPEN, vk)
-        proj_v = np.sum(v_lines[int(th_h * 0.3):int(th_h * 0.8), :], axis=0).astype(float)
+        proj_v = np.sum(v_lines[int(th_h * 0.25):int(th_h * 0.85), :], axis=0).astype(float)
         smooth_v = np.convolve(proj_v, np.ones(7) / 7, mode="same")
 
+        # 过滤边缘 2% 杂线噪声后寻找显著波峰
+        margin = int(th_w * 0.02)
+        valid_range = smooth_v[margin:th_w - margin]
         peaks = []
-        if np.max(smooth_v) > 0:
-            peaks = [
-                x for x in range(th_w)
-                if smooth_v[x] > np.max(smooth_v) * 0.25 and smooth_v[x] == np.max(smooth_v[max(0, x - 10):min(th_w, x + 11)])
-            ]
+        if np.max(valid_range) > 0:
+            p_thresh = np.max(valid_range) * 0.25
+            for x in range(margin + 5, th_w - margin - 5):
+                if smooth_v[x] > p_thresh and smooth_v[x] == np.max(smooth_v[x - 8:x + 9]):
+                    peaks.append(x)
+
         g_peaks = []
         for p in peaks:
-            if not g_peaks or p - g_peaks[-1] > 10:
+            if not g_peaks or p - g_peaks[-1] > 20:
                 g_peaks.append(p)
             else:
                 g_peaks[-1] = (g_peaks[-1] + p) // 2
 
-        col_ratio_score = 0.0
-        if len(g_peaks) >= 3:
-            w_left = g_peaks[1] - g_peaks[0]
-            w_right = g_peaks[-1] - g_peaks[-2]
-            if w_left < w_right:
-                col_ratio_score = (w_right - w_left) / (w_left + 1e-5)
-            else:
-                col_ratio_score = -((w_left - w_right) / (w_right + 1e-5))
+        col_score = 0.0
+        if len(g_peaks) >= 4:
+            col_widths = [g_peaks[i + 1] - g_peaks[i] for i in range(len(g_peaks) - 1)]
+            valid_widths = [(idx, w) for idx, w in enumerate(col_widths) if 20 <= w <= 180]
+            if valid_widths:
+                # 全局最窄列分析
+                min_col_idx = min(valid_widths, key=lambda x: x[1])[0]
+                num_cols = len(col_widths)
+                if min_col_idx <= max(1, num_cols // 4):
+                    col_score = 2.0
+                elif min_col_idx >= num_cols - 1 - max(1, num_cols // 4):
+                    col_score = -2.0
 
-        total_score = peak_val * 10.0 + col_ratio_score * 2.0
+                # 左前 2 列与右后 2 列平均宽度对比
+                left_w = np.mean([w for _, w in valid_widths[:2]]) if len(valid_widths) >= 2 else 50
+                right_w = np.mean([w for _, w in valid_widths[-2:]]) if len(valid_widths) >= 2 else 50
+                if left_w < right_w * 0.85:
+                    col_score += 1.5
+                elif right_w < left_w * 0.85:
+                    col_score -= 1.5
+
+        # 3. 表头 vs 页脚外侧文字非网格墨水密度不对称性
+        text_mask = cv2.bitwise_and(th, cv2.bitwise_not(cv2.bitwise_or(h_lines, v_lines)))
+        top_band = text_mask[15:75, int(th_w * 0.1):int(th_w * 0.9)]
+        bot_band = text_mask[th_h - 75:th_h - 15, int(th_w * 0.1):int(th_w * 0.9)]
+        top_ink = np.sum(top_band > 0)
+        bot_ink = np.sum(bot_band > 0)
+        hdr_score = 0.0
+        if top_ink > bot_ink * 1.25:
+            hdr_score = 1.0
+        elif bot_ink > top_ink * 1.25:
+            hdr_score = -1.0
+
+        # 综合评分：若行周期波峰过低，说明并非竖版排版，严重惩罚
+        if peak_val < 0.12:
+            total_score = -50.0 + peak_val * 10.0
+        else:
+            total_score = peak_val * 10.0 + col_score * 2.0 + hdr_score * 1.5
+
         candidates.append((shift, total_score))
 
     candidates.sort(key=lambda x: x[1], reverse=True)

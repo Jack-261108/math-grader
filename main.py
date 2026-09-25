@@ -51,7 +51,7 @@ def process_sheet(
 
     # 2. 表格角点检测与透视校正
     corners = cv_detector.detect_table_corners(orig_img)
-    warped_img, _M, M_inv = cv_detector.warp_table(orig_img, corners, target_w=1600, target_h=2200)
+    warped_img, _, M_inv = cv_detector.warp_table(orig_img, corners, target_w=1600, target_h=2200)
     row_bounds, col_bounds = cv_detector.detect_grid_cells(warped_img, total_rows=21, total_cols=11)
     logger.info(f"[Math-Pipeline] [2/5] 表格透视矫正与网格分割完成: 检测到 {len(row_bounds)} 行, {len(col_bounds)} 列")
 
@@ -66,6 +66,15 @@ def process_sheet(
     sheet_title = ocr_res.get("sheet_title", "速算练习")
     items_raw = ocr_res.get("items", [])
     logger.info(f"[Math-Pipeline] [3/5] 视觉提取成功: 卷名=《{sheet_title}》, 题目数量={len(items_raw)}")
+
+    # 闭环朝向自检与自愈补偿：若 VLM 明确发现展平图为上下倒立，自动旋转 180° 并重对齐网格
+    if ocr_res.get("is_upside_down") is True:
+        logger.warning("[Math-Pipeline] 触发闭环方向自愈: VLM 检测到展平图为上下颠倒，自动执行 180° 纠偏旋转补偿！")
+        warped_img = cv2.rotate(warped_img, cv2.ROTATE_180)
+        corners = np.roll(corners, -2, axis=0)
+        _, _, M_inv = cv_detector.warp_table(orig_img, corners, target_w=1600, target_h=2200)
+        row_bounds, col_bounds = cv_detector.detect_grid_cells(warped_img, total_rows=21, total_cols=11)
+        logger.info(f"[Math-Pipeline] 闭环方向纠偏完成: 展平图已恢复正向，网格已重新对齐")
 
     # 4. 精确数学核算与成绩评定
     logger.info(f"[Math-Pipeline] [4/5] 正在执行精准数学规则核算与判分...")
