@@ -1,7 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import { getOmrPresets, parseAnswerImage, recognizeOmrOnly, gradeOmr } from '../api/omr';
-import { getHistoryDetail } from '../api/history';
 import { useConfigStore } from './config';
 import { useModalStore } from './modal';
 import { compressImage } from '../utils/imageCompressor';
@@ -654,18 +653,6 @@ export const useOmrStore = defineStore('omr', () => {
     }
   }
 
-  async function restoreTask(taskId) {
-    if (!taskId) return;
-    const res = await getHistoryDetail(taskId);
-    const data = res.data;
-    if (data && !data.task_id) {
-      data.task_id = taskId;
-    }
-    if (!data.card_url) data.card_url = `/output/${taskId}_card.jpg`;
-    initResultData(data);
-    return data;
-  }
-
   function reset() {
     resultData.value = null;
     rawTaskId.value = '';
@@ -748,7 +735,6 @@ export const useOmrStore = defineStore('omr', () => {
     recognizeOnly,
     applyCorrectionAndRegrade,
     initResultData,
-    restoreTask,
     reset
   };
 });

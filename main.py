@@ -7,6 +7,7 @@ import os
 import sys
 import argparse
 import json
+import base64
 import logging
 from typing import Optional
 import cv2
@@ -34,6 +35,17 @@ import math_judge
 import renderer
 
 
+def mat_to_data_url(mat: np.ndarray, quality: int = 85) -> str:
+    """将 OpenCV 图像矩阵在内存中编码为 base64 data url，完全零磁盘写入"""
+    if mat is None or not hasattr(mat, 'shape'):
+        return ""
+    success, encoded = cv2.imencode('.jpg', mat, [int(cv2.IMWRITE_JPEG_QUALITY), quality])
+    if not success:
+        return ""
+    b64 = base64.b64encode(encoded.tobytes()).decode('ascii')
+    return f"data:image/jpeg;base64,{b64}"
+
+
 def process_sheet(
     orig_img: np.ndarray,
     base_name: str,
@@ -41,11 +53,13 @@ def process_sheet(
     time_str: str = "23分18秒",
     model: Optional[str] = None,
     api_base_url: Optional[str] = None,
-    api_key: Optional[str] = None
+    api_key: Optional[str] = None,
+    save_to_disk: bool = True
 ) -> dict:
     """处理单张试卷的完整批改流水线并返回结构化数据与图片路径"""
-    output_dir = os.path.abspath(output_dir)
-    os.makedirs(output_dir, exist_ok=True)
+    if save_to_disk:
+        output_dir = os.path.abspath(output_dir)
+        os.makedirs(output_dir, exist_ok=True)
     h, w = orig_img.shape[:2]
     logger.info(f"[Math-Pipeline] [1/5] 原始图片加载完成: 尺寸={w}x{h}")
 
@@ -97,23 +111,39 @@ def process_sheet(
     scan_annotated = renderer.render_on_warped_sheet(
         warped_img, row_bounds, col_bounds, judged_items, report, sheet_type=detected_type
     )
-    scan_path = os.path.join(output_dir, f"{base_name}_annotated_scan.jpg")
-    scan_ok = cv2.imwrite(scan_path, scan_annotated)
-    if not scan_ok or not os.path.exists(scan_path):
-        raise IOError(f"保存扫描展平标注图失败，磁盘写入未成功: {scan_path}")
 
     orig_annotated = renderer.render_on_original_sheet(
         orig_img, M_inv, row_bounds, col_bounds, judged_items, report, corners=corners
     )
-    orig_path = os.path.join(output_dir, f"{base_name}_annotated_original.jpg")
-    orig_ok = cv2.imwrite(orig_path, orig_annotated)
-    if not orig_ok or not os.path.exists(orig_path):
-        raise IOError(f"保存拍照原图标注图失败，磁盘写入未成功: {orig_path}")
 
-    logger.info(f"[Math-Pipeline] [5/5] 标注大图生成与落盘完成: 展平图={scan_path}, 原图={orig_path}")
+    scan_path = ""
+    orig_path = ""
+    scan_url = ""
+    orig_url = ""
 
-    # 保存 JSON 结果明细
-    json_path = os.path.join(output_dir, f"{base_name}_report.json")
+    if save_to_disk:
+        output_dir = os.path.abspath(output_dir)
+        os.makedirs(output_dir, exist_ok=True)
+        scan_path = os.path.join(output_dir, f"{base_name}_annotated_scan.jpg")
+        scan_ok = cv2.imwrite(scan_path, scan_annotated)
+        if not scan_ok or not os.path.exists(scan_path):
+            raise IOError(f"保存扫描展平标注图失败，磁盘写入未成功: {scan_path}")
+
+        orig_path = os.path.join(output_dir, f"{base_name}_annotated_original.jpg")
+        orig_ok = cv2.imwrite(orig_path, orig_annotated)
+        if not orig_ok or not os.path.exists(orig_path):
+            raise IOError(f"保存拍照原图标注图失败，磁盘写入未成功: {orig_path}")
+
+        scan_url = f"/output/{base_name}_annotated_scan.jpg"
+        orig_url = f"/output/{base_name}_annotated_original.jpg"
+        logger.info(f"[Math-Pipeline] [5/5] 标注大图生成与落盘完成: 展平图={scan_path}, 原图={orig_path}")
+    else:
+        # 纯内存 Base64 Data URL 编码，零文件落盘存储
+        scan_url = mat_to_data_url(scan_annotated, quality=85)
+        orig_url = mat_to_data_url(orig_annotated, quality=85)
+        logger.info(f"[Math-Pipeline] [5/5] 标注大图纯内存 Base64 编码完成 (服务器零文件存储)")
+
+    # 封装结果明细
     result_data = {
         "title": sheet_title,
         "summary": {
@@ -129,10 +159,15 @@ def process_sheet(
         "items": judged_items,
         "scan_path": scan_path,
         "orig_path": orig_path,
-        "json_path": json_path
+        "scan_url": scan_url,
+        "orig_url": orig_url
     }
-    with open(json_path, "w", encoding="utf-8") as f:
-        json.dump(result_data, f, ensure_ascii=False, indent=2)
+
+    if save_to_disk:
+        json_path = os.path.join(output_dir, f"{base_name}_report.json")
+        result_data["json_path"] = json_path
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(result_data, f, ensure_ascii=False, indent=2)
 
     return result_data
 

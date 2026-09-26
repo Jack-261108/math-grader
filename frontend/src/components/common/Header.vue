@@ -24,15 +24,6 @@
 
         <button
           type="button"
-          @click="modalStore.openHistory"
-          class="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 active:bg-slate-300 flex items-center justify-center text-slate-600 transition cursor-pointer"
-          title="查看判题历史记录"
-        >
-          <i class="fa-solid fa-clock-rotate-left text-sm text-blue-600"></i>
-        </button>
-
-        <button
-          type="button"
           @click="modalStore.openSettings"
           class="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 active:bg-slate-300 flex items-center justify-center text-slate-600 transition"
           title="配置 API Key"

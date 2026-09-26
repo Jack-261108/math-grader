@@ -7,11 +7,6 @@ export const useModalStore = defineStore('modal', () => {
   function openSettings() { isSettingsOpen.value = true; }
   function closeSettings() { isSettingsOpen.value = false; }
 
-  // History Modal
-  const isHistoryOpen = ref(false);
-  function openHistory() { isHistoryOpen.value = true; }
-  function closeHistory() { isHistoryOpen.value = false; }
-
   // AI Tutor Modal
   const isAiTutorOpen = ref(false);
   const aiTutorContext = ref(null); // { type: 'math' | 'omr', questionData: {...} }
@@ -78,9 +73,6 @@ export const useModalStore = defineStore('modal', () => {
     isSettingsOpen,
     openSettings,
     closeSettings,
-    isHistoryOpen,
-    openHistory,
-    closeHistory,
     isAiTutorOpen,
     aiTutorContext,
     openAiTutor,

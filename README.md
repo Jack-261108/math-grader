@@ -8,7 +8,8 @@
 3. **客观选择题答题卡 (OMR & 在线交互)**：支持 **CV+LLM 混合识别高性价比引擎**与 **2B 铅笔高仿真在线交互填涂** 双模自由切换；全面适配公考新大纲六大模块自定义题号与单题分值（精确核算满分 100 分），支持**答案截图一键视觉 OCR 录入**与标准电子答题卡诊断大图生成；
 4. **错题名师秒杀点拨与速算公式知识库**：一键调用大模型深度剖析错因与公考破局技巧，内置行测核心速算公式与模块口诀库，支持一键复制与引用追问；
 5. **纯前端 A4 错题本与空白重做卷排版引擎**：纯前端矢量排版，支持一键打印或导出高质量 A4 纯净空白重做卷与错题复盘解析版；
-6. **现代化技术架构**：前端采用 **Vue 3 + Vite + Pinia + Vue Router + TailwindCSS** 现代化响应式工程体系，后端基于 **FastAPI** 异步微服务，配合 **BYOK (Bring Your Own Key)** 本地端安全防护机制。
+6. **服务端 100% 内存级无状态计算与零文件存储**：纯内存完成图像解码、识别、核算与 Base64 Data URL 编码直出，服务端不保存任何试卷照片、批改标注大图或做题历史，彻底保障多用户与公网访问下的绝对隐私与零数据残留；
+7. **现代化技术架构**：前端采用 **Vue 3 + Vite + Pinia + Vue Router + TailwindCSS** 现代化响应式工程体系，后端基于 **FastAPI** 异步微服务，配合 **BYOK (Bring Your Own Key)** 本地端安全防护机制。
 
 ---
 
@@ -159,7 +160,7 @@
 
 ### 💻 现代化 Vue 3 渐进式前端工程体系 (`frontend/`)
 - 基于 **Vue 3 + Vite 5 + Pinia + Vue Router 4 + TailwindCSS** 模块化开发；
-- 状态按领域分层解耦（`math`, `omr`, `modal`, `history`, `config`, `tutor`）；
+- 状态按领域分层解耦（`math`, `omr`, `modal`, `config`, `tutor`）；
 - 移动端、平板与桌面超宽屏全响应式自适应布局；
 - 编译产物自动注入 `static/dist/`，由 FastAPI 高性能静态托管。
 
@@ -188,11 +189,11 @@ math-correct/
 ├── omr_annotator.py          # 实体答题卡原图标注与勾叉复核
 ├── ai_tutor.py               # 错题一键【问名师】智能解析与公考秒杀技巧辅导
 ├── main.py                   # 批改流水线核心及 CLI 命令行入口
-├── server.py                 # FastAPI 移动端与全功能 Web 服务（速算、答题卡、名师接口）
+├── server.py                 # FastAPI 移动端与全功能 Web 服务（纯内存无状态批改引擎）
 ├── deploy.sh                 # 一键拉取最新代码、字体检测、依赖同步、前端编译与服务平滑重启脚本
 ├── frontend/                 # 现代化 Vue 3 + Pinia + Vue Router + Vite 前端工程
 │   ├── src/
-│   │   ├── api/              # API 异步请求层（速算、答题卡、名师、历史记录等）
+│   │   ├── api/              # API 异步请求层（速算、答题卡、名师接口）
 │   │   ├── components/       # 业务组件库（速算、答题卡、伴考计时器、四象限诊断、通用模态框等）
 │   │   ├── constants/        # 公考考场时序、速算核心公式库口诀、常规模板常量
 │   │   ├── stores/           # Pinia 响应式状态管理（速算、答题卡、弹窗、全局配置等）
@@ -202,7 +203,7 @@ math-correct/
 │   └── vite.config.js        # Vite 构建与代理配置
 ├── static/
 │   └── dist/                 # 前端工程 Vite 生产构建产物（被 FastAPI 自动托管）
-├── output/                   # 批改结果输出目录（自动生成）
+├── output/                   # 批改结果输出目录（仅供 CLI 命令行模式，Web 服务零文件存储）
 ├── requirements.txt          # Python 依赖清单
 └── README.md                 # 项目完整使用说明与技术架构文档
 ```

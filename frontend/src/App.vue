@@ -22,7 +22,6 @@
 
     <!-- 全局模态弹窗 -->
     <SettingsModal />
-    <HistoryModal />
     <AiTutorModal />
     <QuestionModal />
     <FullscreenViewer />
@@ -41,7 +40,6 @@ import MathView from './views/MathView.vue';
 import OmrView from './views/OmrView.vue';
 
 import SettingsModal from './components/modals/SettingsModal.vue';
-import HistoryModal from './components/modals/HistoryModal.vue';
 import AiTutorModal from './components/modals/AiTutorModal.vue';
 import QuestionModal from './components/modals/QuestionModal.vue';
 import FullscreenViewer from './components/modals/FullscreenViewer.vue';
@@ -80,32 +78,20 @@ function handleSwitchMode(mode) {
   }
 }
 
-// 监听路由参数变化自动加载任务或切换模式
+// 监听路由参数变化自动切换模式
 watch(
   () => route.query,
-  async (query) => {
+  (query) => {
     const mode = query.mode;
-    const taskId = query.task_id;
 
-    if (mode === 'omr' || (taskId && String(taskId).startsWith('omr_'))) {
+    if (mode === 'omr') {
       currentMode.value = 'omr';
-      if (taskId && (!omrStore.resultData || omrStore.resultData.task_id !== taskId)) {
-        await omrStore.restoreTask(taskId);
-      }
-    } else if (mode === 'math' || taskId) {
-      currentMode.value = 'math';
-      if (taskId && (!mathStore.resultData || mathStore.resultData.task_id !== taskId)) {
-        await mathStore.restoreTask(taskId);
-      }
     } else {
       currentMode.value = 'math';
     }
 
     if (query.settings !== undefined) {
       modalStore.openSettings();
-    }
-    if (query.history !== undefined) {
-      modalStore.openHistory();
     }
     if (query.print_preview) {
       modalStore.openPrint(query.print_preview === 'omr' ? 'omr' : 'math');
@@ -117,8 +103,7 @@ watch(
 onMounted(() => {
   // 初次加载检查
   const urlParams = new URLSearchParams(window.location.search);
-  const tId = urlParams.get('task_id');
-  const m = urlParams.get('mode') || (tId && tId.startsWith('omr_') ? 'omr' : 'math');
+  const m = urlParams.get('mode') || 'math';
   currentMode.value = m;
 });
 </script>

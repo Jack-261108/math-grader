@@ -1,7 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import { gradeMath } from '../api/math';
-import { getHistoryDetail } from '../api/history';
 import { useConfigStore } from './config';
 import { useModalStore } from './modal';
 import { compressImage } from '../utils/imageCompressor';
@@ -252,20 +251,6 @@ export const useMathStore = defineStore('math', () => {
     }
   }
 
-  async function restoreTask(taskId) {
-    if (!taskId) return;
-    const res = await getHistoryDetail(taskId);
-    const data = res.data;
-    if (data && !data.task_id) {
-      data.task_id = taskId;
-    }
-    if (!data.scan_url) data.scan_url = `/output/${taskId}_annotated_scan.jpg`;
-    if (!data.orig_url) data.orig_url = `/output/${taskId}_annotated_original.jpg`;
-    resultData.value = data;
-    activeImageTab.value = 'scan';
-    return data;
-  }
-
   function reset() {
     resultData.value = null;
     activeImageTab.value = 'scan';
@@ -305,7 +290,6 @@ export const useMathStore = defineStore('math', () => {
     releaseScreenWakeLock,
     triggerSoundAlert,
     submitGrade,
-    restoreTask,
     reset
   };
 });
