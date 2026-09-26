@@ -89,7 +89,7 @@
             <span>行测做题用时与得分 4 象限分布图</span>
           </h3>
           <p class="text-[11px] text-slate-400 mt-0.5">
-            点击任意题目圆点直接唤起原题复盘与【💡 问名师】秒杀点拨
+            点击任意题目圆点直接唤起单题作答详情与【💡 问名师】秒杀点拨
           </p>
         </div>
 
@@ -514,7 +514,7 @@
                 @click="modalStore.openQuestion(it.q_num)"
                 class="text-[11px] text-blue-600 hover:text-blue-800 font-semibold px-2 py-0.5 rounded-lg hover:bg-blue-50 transition"
               >
-                原题
+                详情
               </button>
             </div>
           </div>
