@@ -73,16 +73,16 @@
         </div>
       </div>
 
-      <!-- 针对性弱项重练组卷排版 (当 modalStore.printSource === 'wrong_sheet') -->
-      <div v-if="isWrongSheet">
-        <div v-if="wrongSheetItems.length === 0" class="text-center py-12 text-slate-400 font-bold text-base">
-          请先在错题知识库生成一份专项提分卷后再进行打印排版。
+      <!-- 针对性弱项强化练习组卷排版 (当 modalStore.printSource === 'targeted_sheet') -->
+      <div v-if="isTargetedSheet">
+        <div v-if="targetedSheetItems.length === 0" class="text-center py-12 text-slate-400 font-bold text-base">
+          暂无自适应强化练习题数据，请在速算诊断画像中生成后打印。
         </div>
 
         <!-- 针对性弱项空白重做卷 -->
         <div v-else-if="printView === 'clean'" class="space-y-4">
           <div
-            v-for="(it, idx) in wrongSheetItems"
+            v-for="(it, idx) in targetedSheetItems"
             :key="it.db_question_id || idx"
             class="print-avoid-break p-3.5 border-2 border-slate-300 rounded-xl bg-white space-y-2"
           >
@@ -126,7 +126,7 @@
         <!-- 针对性弱项复盘解析版 -->
         <div v-else class="space-y-3.5">
           <div
-            v-for="(it, idx) in wrongSheetItems"
+            v-for="(it, idx) in targetedSheetItems"
             :key="it.db_question_id || idx"
             class="print-avoid-break p-3.5 border border-slate-300 rounded-xl bg-slate-50/80 space-y-2"
           >
@@ -318,17 +318,15 @@ import { ref, computed } from 'vue';
 import { useModalStore } from '../../stores/modal';
 import { useMathStore } from '../../stores/math';
 import { useOmrStore } from '../../stores/omr';
-import { useWrongBookStore } from '../../stores/wrongbook';
 import { renderStructuredMaterialHtml } from '../../utils/materialFormatter';
 
 const modalStore = useModalStore();
 const mathStore = useMathStore();
 const omrStore = useOmrStore();
-const wrongBookStore = useWrongBookStore();
 
 const printView = ref('clean'); // 'clean' | 'review'
 
-const isWrongSheet = computed(() => modalStore.printSource === 'wrong_sheet');
+const isTargetedSheet = computed(() => modalStore.printSource === 'targeted_sheet' || modalStore.printSource === 'wrong_sheet');
 const isMath = computed(() => modalStore.printSource === 'math');
 
 const todayStr = computed(() => {
@@ -336,8 +334,8 @@ const todayStr = computed(() => {
 });
 
 const examName = computed(() => {
-  if (isWrongSheet.value) {
-    return wrongBookStore.generatedSheet?.title || '针对性薄弱考点自测提分卷';
+  if (isTargetedSheet.value) {
+    return modalStore.targetedSheet?.title || '针对性薄弱考点自测提分卷';
   }
   if (isMath.value) {
     return mathStore.resultData?.title || '公考资料分析速算';
@@ -355,8 +353,8 @@ const summaryTips = computed(() => {
     : '说明：每道错题已标注您的原错误答案与命题正解，附带错因分析与秒杀点拨，建议考前精细研读。';
 });
 
-const wrongSheetItems = computed(() => {
-  return wrongBookStore.generatedSheet?.items || [];
+const targetedSheetItems = computed(() => {
+  return modalStore.targetedSheet?.items || [];
 });
 
 const mathWrongItems = computed(() => {

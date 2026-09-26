@@ -191,12 +191,10 @@
 <script setup>
 import { ref, computed, watch, onBeforeUnmount } from 'vue';
 import { useModalStore } from '../../stores/modal';
-import { useWrongBookStore } from '../../stores/wrongbook';
 import { getTargetedExercises } from '../../api/math';
 import { formatTimerSeconds } from '../../constants/examTiming';
 
 const modalStore = useModalStore();
-const wrongBookStore = useWrongBookStore();
 
 const sheetData = ref(null);
 const isLoading = ref(false);
@@ -326,7 +324,6 @@ function getInputClass(item) {
 
 function handlePrintA4() {
   if (!sheetData.value?.items) return;
-  // 将 20 题转换装载进 wrongBookStore 并打开 PrintModal
   const sheet = {
     title: sheetData.value.title,
     total_items: sheetData.value.items.length,
@@ -341,8 +338,7 @@ function handlePrintA4() {
       score_per_q: 1.0
     }))
   };
-  wrongBookStore.generatedSheet = sheet;
-  modalStore.openPrint('wrong_sheet');
+  modalStore.openPrint('targeted_sheet', sheet);
 }
 
 function closeModal() {

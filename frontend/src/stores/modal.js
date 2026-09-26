@@ -50,9 +50,13 @@ export const useModalStore = defineStore('modal', () => {
 
   // Print Modal
   const isPrintModalOpen = ref(false);
-  const printSource = ref('math'); // 'math' | 'omr'
-  function openPrint(source = 'math') {
+  const printSource = ref('math'); // 'math' | 'omr' | 'targeted_sheet'
+  const targetedSheet = ref(null);
+  function openPrint(source = 'math', sheet = null) {
     printSource.value = source;
+    if (sheet) {
+      targetedSheet.value = sheet;
+    }
     isPrintModalOpen.value = true;
   }
   function closePrint() {
@@ -91,6 +95,7 @@ export const useModalStore = defineStore('modal', () => {
     closeFullscreen,
     isPrintModalOpen,
     printSource,
+    targetedSheet,
     openPrint,
     closePrint,
     isTargetedPracticeOpen,

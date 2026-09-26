@@ -43,7 +43,6 @@ import omr_engine    # type: ignore
 import omr_annotator # type: ignore
 import ai_tutor      # type: ignore
 import vision_ocr     # type: ignore
-import wrong_book_db # type: ignore
 import adaptive_math_generator # type: ignore
 import json
 import urllib.request
@@ -271,12 +270,6 @@ async def api_grade(
                     "diagnosis": it.get("diagnosis", ""),
                     "advice": it.get("advice", "")
                 })
-
-        # 自动持久化沉淀错题到错题知识库 (艾宾浩斯复习流)
-        try:
-            wrong_book_db.ingest_batch_wrong_items("math", task_id, wrong_items, exam_title=result_data.get("title", "速算技巧练习"))
-        except Exception as we:
-            logger.warning(f"[WrongBook] 速算错题自动沉淀失败: task_id={task_id}, error={we}")
 
         elapsed_ms = int((time.time() - t_start) * 1000)
         items_count = len(result_data.get("items", []))
@@ -648,12 +641,6 @@ async def api_grade_omr(
         with open(report_path, "w", encoding="utf-8") as f:
             json.dump(result_payload, f, ensure_ascii=False, indent=2)
 
-        # 自动持久化沉淀错题到错题知识库 (艾宾浩斯复习流)
-        try:
-            wrong_book_db.ingest_batch_wrong_items("omr", task_id, judged_data.get("items", []), exam_title=exam_title_str)
-        except Exception as we:
-            logger.warning(f"[WrongBook] OMR 错题自动沉淀失败: task_id={task_id}, error={we}")
-
         elapsed_ms = int((time.time() - t_start) * 1000)
         smry = judged_data.get("summary", {})
         earned_score = smry.get("total_earned_score", 0)
@@ -911,154 +898,6 @@ async def api_delete_history(task_id: str):
         "status": "success",
         "message": f"已删除历史记录及关联资源 ({deleted_count} 个文件)"
     }
-
-
-# ============================================================
-# 错题知识库与艾宾浩斯抗遗忘复习流 REST API
-# ============================================================
-
-@app.get("/api/wrong-book/stats")
-async def api_wrong_book_stats():
-    """获取错题知识库全局统计画像（总错题、今日待复习、已攻克、模块与考点排行）"""
-    try:
-        stats = wrong_book_db.get_wrong_book_stats()
-        return {"status": "success", **stats}
-    except Exception as e:
-        logger.exception(f"[WrongBook] 获取错题库统计异常: {e}")
-        raise HTTPException(status_code=500, detail=f"获取统计失败: {str(e)}")
-
-
-@app.get("/api/wrong-book/questions")
-async def api_wrong_book_query(
-    source_type: Optional[str] = "all",
-    status: Optional[str] = "all",
-    topic: Optional[str] = "all",
-    error_tag: Optional[str] = "all",
-    only_due: bool = False,
-    keyword: Optional[str] = None,
-    limit: int = 100,
-    offset: int = 0
-):
-    """多维度灵活检索错题列表"""
-    try:
-        data = wrong_book_db.query_wrong_questions(
-            source_type=source_type,
-            status=status,
-            topic=topic,
-            error_tag=error_tag,
-            only_due=only_due,
-            keyword=keyword,
-            limit=limit,
-            offset=offset
-        )
-        return {"status": "success", **data}
-    except Exception as e:
-        logger.exception(f"[WrongBook] 检索错题列表异常: {e}")
-        raise HTTPException(status_code=500, detail=f"检索错题失败: {str(e)}")
-
-
-@app.post("/api/wrong-book/review")
-async def api_wrong_book_record_review(
-    question_id: int = Form(...),
-    is_correct: bool = Form(...),
-    user_input: Optional[str] = Form("")
-):
-    """记录一次艾宾浩斯复习作答，自动按遗忘曲线递延周期并更新攻克状态"""
-    try:
-        res = wrong_book_db.record_review_result(question_id, is_correct, user_input=user_input or "")
-        return {"status": "success", "result": res}
-    except ValueError as ve:
-        raise HTTPException(status_code=404, detail=str(ve))
-    except Exception as e:
-        logger.exception(f"[WrongBook] 记录复习进度异常: {e}")
-        raise HTTPException(status_code=500, detail=f"记录复习失败: {str(e)}")
-
-
-@app.post("/api/wrong-book/update-tag")
-async def api_wrong_book_update_tag(
-    question_id: int = Form(...),
-    error_tag: Optional[str] = Form(None),
-    user_notes: Optional[str] = Form(None)
-):
-    """更新错题的错因分类标签或考生复盘手记"""
-    try:
-        ok = wrong_book_db.update_question_tag_or_notes(question_id, error_tag=error_tag, user_notes=user_notes)
-        return {"status": "success" if ok else "failed"}
-    except Exception as e:
-        logger.exception(f"[WrongBook] 更新标签异常: {e}")
-        raise HTTPException(status_code=500, detail=f"更新标签失败: {str(e)}")
-
-
-@app.post("/api/wrong-book/generate-sheet")
-async def api_wrong_book_generate_sheet(
-    topic_list_json: Optional[str] = Form(None),
-    source_type: Optional[str] = Form("all"),
-    only_due: bool = Form(False),
-    recent_days: Optional[int] = Form(None),
-    count: int = Form(15)
-):
-    """根据薄弱考点或待复习错题，一键组装专项提分重练卷"""
-    try:
-        topics = None
-        if isinstance(topic_list_json, str) and topic_list_json.strip():
-            try:
-                topics = json.loads(topic_list_json)
-            except Exception:
-                topics = None
-
-        st = source_type if isinstance(source_type, str) else "all"
-        od = bool(only_due) if isinstance(only_due, bool) else (str(only_due).lower() == 'true')
-        rd = int(recent_days) if (isinstance(recent_days, (int, str)) and str(recent_days).isdigit()) else None
-        cnt = int(count) if (isinstance(count, (int, str)) and str(count).isdigit()) else 15
-
-        sheet = wrong_book_db.generate_weakness_practice_sheet(
-            topic_list=topics,
-            source_type=st,
-            only_due=od,
-            recent_days=rd,
-            count=cnt
-        )
-        return {"status": "success", "sheet": sheet}
-    except Exception as e:
-        logger.exception(f"[WrongBook] 组装提分卷异常: {e}")
-        raise HTTPException(status_code=500, detail=f"组卷失败: {str(e)}")
-
-
-@app.post("/api/wrong-book/sync-history")
-async def api_wrong_book_sync_history():
-    """从历次存量判题报告文件中批量反向提取并同步错题到知识库"""
-    try:
-        if not os.path.exists(output_dir):
-            return {"status": "success", "imported_count": 0}
-
-        total_imported = 0
-        filenames = [f for f in os.listdir(output_dir) if f.endswith("_report.json")]
-        for fname in filenames:
-            file_path = os.path.join(output_dir, fname)
-            try:
-                with open(file_path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                task_id = data.get("task_id") or fname[:-12]
-                is_omr = str(task_id).startswith("omr_") or "card_url" in data or "section_results" in data
-                if is_omr:
-                    exam_title = data.get("exam_title", "行测答题卡诊断")
-                    items = data.get("items", [])
-                    cnt = wrong_book_db.ingest_batch_wrong_items("omr", task_id, items, exam_title=exam_title)
-                    total_imported += cnt
-                else:
-                    exam_title = data.get("title", "速算技巧练习")
-                    items = data.get("items", [])
-                    cnt = wrong_book_db.ingest_batch_wrong_items("math", task_id, items, exam_title=exam_title)
-                    total_imported += cnt
-            except Exception:
-                continue
-
-        logger.info(f"[WrongBook] 从历史记录同步错题完成: 提取录入 {total_imported} 题")
-        return {"status": "success", "imported_count": total_imported}
-    except Exception as e:
-        logger.exception(f"[WrongBook] 同步历史错题失败: {e}")
-        raise HTTPException(status_code=500, detail=f"同步历史错题失败: {str(e)}")
-
 
 
 def get_local_ip() -> str:

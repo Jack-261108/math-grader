@@ -15,9 +15,6 @@
       <div v-show="currentMode === 'omr'">
         <OmrView />
       </div>
-      <div v-show="currentMode === 'wrongbook'">
-        <WrongBookView />
-      </div>
     </main>
 
     <!-- 底部返回顶部 -->
@@ -42,7 +39,6 @@ import ModeTabs from './components/common/ModeTabs.vue';
 import BackToTop from './components/common/BackToTop.vue';
 import MathView from './views/MathView.vue';
 import OmrView from './views/OmrView.vue';
-import WrongBookView from './views/WrongBookView.vue';
 
 import SettingsModal from './components/modals/SettingsModal.vue';
 import HistoryModal from './components/modals/HistoryModal.vue';
@@ -75,8 +71,6 @@ function handleSwitchMode(mode) {
     } else {
       router.replace({ path: '/', query: { mode: 'omr' } });
     }
-  } else if (mode === 'wrongbook') {
-    router.replace({ path: '/', query: { mode: 'wrongbook' } });
   } else {
     if (mathStore.resultData?.task_id) {
       router.replace({ path: '/', query: { mode: 'math', task_id: mathStore.resultData.task_id } });
@@ -93,9 +87,7 @@ watch(
     const mode = query.mode;
     const taskId = query.task_id;
 
-    if (mode === 'wrongbook') {
-      currentMode.value = 'wrongbook';
-    } else if (mode === 'omr' || (taskId && String(taskId).startsWith('omr_'))) {
+    if (mode === 'omr' || (taskId && String(taskId).startsWith('omr_'))) {
       currentMode.value = 'omr';
       if (taskId && (!omrStore.resultData || omrStore.resultData.task_id !== taskId)) {
         await omrStore.restoreTask(taskId);
@@ -105,7 +97,7 @@ watch(
       if (taskId && (!mathStore.resultData || mathStore.resultData.task_id !== taskId)) {
         await mathStore.restoreTask(taskId);
       }
-    } else if (mode === 'math') {
+    } else {
       currentMode.value = 'math';
     }
 

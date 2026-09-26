@@ -24,21 +24,6 @@
 
         <button
           type="button"
-          @click="openWrongBook"
-          class="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 active:bg-slate-300 flex items-center justify-center text-slate-600 transition relative cursor-pointer"
-          title="错题知识库与艾宾浩斯复习"
-        >
-          <i class="fa-solid fa-book-bookmark text-sm text-purple-600"></i>
-          <span
-            v-if="wrongBookStore.todayDueCount > 0"
-            class="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-rose-500 text-white font-black text-[9px] flex items-center justify-center border-2 border-white"
-          >
-            {{ wrongBookStore.todayDueCount > 9 ? '9+' : wrongBookStore.todayDueCount }}
-          </span>
-        </button>
-
-        <button
-          type="button"
           @click="modalStore.openHistory"
           class="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 active:bg-slate-300 flex items-center justify-center text-slate-600 transition cursor-pointer"
           title="查看判题历史记录"
@@ -62,15 +47,7 @@
 <script setup>
 import { useConfigStore } from '../../stores/config';
 import { useModalStore } from '../../stores/modal';
-import { useWrongBookStore } from '../../stores/wrongbook';
-import { useRouter } from 'vue-router';
 
 const configStore = useConfigStore();
 const modalStore = useModalStore();
-const wrongBookStore = useWrongBookStore();
-const router = useRouter();
-
-function openWrongBook() {
-  router.replace({ path: '/', query: { mode: 'wrongbook' } });
-}
 </script>
